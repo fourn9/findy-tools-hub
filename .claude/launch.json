@@ -2,10 +2,16 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "Findy Tools Hub — Dev",
+      "name": "Findy Tools Hub — Frontend Dev",
       "runtimeExecutable": "bun",
       "runtimeArgs": ["run", "dev"],
       "port": 5173
+    },
+    {
+      "name": "Findy Tools Hub — API Server",
+      "runtimeExecutable": "bun",
+      "runtimeArgs": ["run", "server:dev"],
+      "port": 3000
     },
     {
       "name": "Findy Tools Hub — Preview (built)",

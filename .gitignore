@@ -1,5 +1,10 @@
 # 依存関係
 node_modules/
+
+# SQLite データベース（スクレイプデータ・ローカルキャッシュ）
+data/*.db
+data/*.db-wal
+data/*.db-shm
 .pnp
 .pnp.js
 
@@ -26,6 +31,9 @@ build/
 .idea/
 *.swp
 *.swo
+
+# Claude ローカル設定（権限情報を含むため非公開）
+.claude/settings.local.json
 
 # macOS
 .DS_Store
