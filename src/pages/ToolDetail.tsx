@@ -1,36 +1,150 @@
+import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import {
-  ArrowLeft,
-  BadgeCheck,
-  ExternalLink,
-  ThumbsUp,
-  Plus,
-  CheckCircle2,
-  XCircle,
+  ArrowLeft, ExternalLink, Star, Globe2, Users,
+  CheckCircle2, Plus, Building2, AlertCircle, Loader2,
 } from 'lucide-react'
-import { tools } from '../data/tools'
+import { getTool, type ApiTool, type ApiReview } from '../lib/api'
 import { contracts } from '../data/mockData'
-import { StarRating } from '../components/StarRating'
 import { ContractStatusBadge } from '../components/StatusBadge'
 
-export function ToolDetail() {
-  const { id } = useParams<{ id: string }>()
-  const tool = tools.find((t) => t.id === id)
-  const contract = contracts.find((c) => c.toolId === id)
+const FINDY_BASE = 'https://findy-tools.io'
 
-  if (!tool) {
+function ToolLogo({ tool }: { tool: ApiTool }) {
+  const src = tool.logo_url ? `${FINDY_BASE}${tool.logo_url}` : null
+  return (
+    <img
+      src={src ?? `https://ui-avatars.com/api/?name=${encodeURIComponent(tool.name)}&background=6366f1&color=fff&size=80`}
+      alt={tool.name}
+      className="w-20 h-20 rounded-2xl object-contain border border-gray-100 bg-white p-2 shrink-0"
+      onError={(e) => {
+        const t = e.target as HTMLImageElement
+        t.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(tool.name)}&background=6366f1&color=fff&size=80`
+      }}
+    />
+  )
+}
+
+function ReviewCard({ review }: { review: ApiReview }) {
+  let labels: string[] = []
+  try { labels = JSON.parse(review.labels) } catch { labels = [] }
+
+  return (
+    <div className="card p-5 space-y-3">
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex-1 min-w-0">
+          {review.title && (
+            <p className="font-semibold text-gray-900">{review.title}</p>
+          )}
+          <div className="flex flex-wrap items-center gap-2 mt-1 text-xs text-gray-500">
+            {review.reviewer_job_position && (
+              <span className="bg-gray-100 px-2 py-0.5 rounded-full">
+                {review.reviewer_job_position}
+              </span>
+            )}
+            {review.company_name && (
+              <span className="flex items-center gap-0.5">
+                <Building2 className="w-3 h-3" />
+                {review.company_name}
+              </span>
+            )}
+            {review.employee_size && (
+              <span className="flex items-center gap-0.5">
+                <Users className="w-3 h-3" />
+                {review.employee_size}
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {(review.good_point || review.growth_point) && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {review.good_point && (
+            <div>
+              <p className="text-xs font-semibold text-green-600 mb-1 flex items-center gap-1">
+                <CheckCircle2 className="w-3.5 h-3.5" /> 良かった点
+              </p>
+              <p className="text-sm text-gray-700 whitespace-pre-line">{review.good_point}</p>
+            </div>
+          )}
+          {review.growth_point && (
+            <div>
+              <p className="text-xs font-semibold text-amber-600 mb-1 flex items-center gap-1">
+                <Star className="w-3.5 h-3.5" /> 改善してほしい点
+              </p>
+              <p className="text-sm text-gray-700 whitespace-pre-line">{review.growth_point}</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {review.introduction_background && (
+        <div>
+          <p className="text-xs font-semibold text-indigo-600 mb-1">導入背景</p>
+          <p className="text-sm text-gray-700 whitespace-pre-line">{review.introduction_background}</p>
+        </div>
+      )}
+
+      {labels.length > 0 && (
+        <div className="flex flex-wrap gap-1 pt-1">
+          {labels.map((label) => (
+            <span
+              key={label}
+              className="text-xs bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-full"
+            >
+              {label}
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+export function ToolDetail() {
+  const { id: alias } = useParams<{ id: string }>()
+  const [tool, setTool] = useState<(ApiTool & { reviews: ApiReview[] }) | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!alias) return
+    setLoading(true)
+    setError(null)
+    getTool(alias)
+      .then(setTool)
+      .catch((e) => setError(e instanceof Error ? e.message : 'エラーが発生しました'))
+      .finally(() => setLoading(false))
+  }, [alias])
+
+  // モックの契約情報と紐付け（alias ベース）
+  const contract = contracts.find((c) => c.toolId === alias)
+
+  if (loading) {
     return (
-      <div className="p-6">
-        <p className="text-gray-500">ツールが見つかりません</p>
+      <div className="p-6 flex items-center gap-3 text-gray-500">
+        <Loader2 className="w-5 h-5 animate-spin" />
+        読み込み中...
       </div>
     )
   }
 
-  const avgRating = tool.rating
-  const ratingDist = [5, 4, 3, 2, 1].map((star) => {
-    const count = tool.reviews.filter((r) => Math.floor(r.rating) === star).length
-    return { star, count, pct: tool.reviewCount > 0 ? Math.round((count / tool.reviews.length) * 100) : 0 }
-  })
+  if (error || !tool) {
+    return (
+      <div className="p-6 space-y-4">
+        <Link to="/catalog" className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-900">
+          <ArrowLeft className="w-4 h-4" /> カタログに戻る
+        </Link>
+        <div className="card p-5 flex items-center gap-3 text-red-600 bg-red-50 border-red-200">
+          <AlertCircle className="w-5 h-5 shrink-0" />
+          <p className="text-sm">{error ?? 'ツールが見つかりません'}</p>
+        </div>
+      </div>
+    )
+  }
+
+  const findyUrl = `${FINDY_BASE}${tool.page_path}`
 
   return (
     <div className="p-6 space-y-6 max-w-5xl">
@@ -41,51 +155,66 @@ export function ToolDetail() {
       {/* Header */}
       <div className="card p-6">
         <div className="flex flex-col sm:flex-row gap-5">
-          <img
-            src={tool.logoUrl}
-            alt={tool.name}
-            className="w-20 h-20 rounded-2xl object-contain border border-gray-100 p-2 shrink-0"
-            onError={(e) => {
-              const target = e.target as HTMLImageElement
-              target.src = `https://ui-avatars.com/api/?name=${tool.name}&background=6366f1&color=fff&size=80`
-            }}
-          />
+          <ToolLogo tool={tool} />
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <h1 className="text-2xl font-bold text-gray-900">{tool.name}</h1>
-              {tool.isFindyVerified && (
-                <div className="flex items-center gap-1 text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full text-xs font-medium">
-                  <BadgeCheck className="w-3.5 h-3.5" />
-                  Findy認定
-                </div>
-              )}
               {contract && <ContractStatusBadge status={contract.status} />}
             </div>
-            <p className="text-gray-500 text-sm mt-1">{tool.category}</p>
-            <p className="text-gray-700 mt-2">{tool.description}</p>
+            {tool.vendor_name && (
+              <p className="text-sm text-gray-500 mt-0.5">{tool.vendor_name}</p>
+            )}
+            {tool.description && (
+              <p className="text-gray-700 mt-2">{tool.description}</p>
+            )}
             <div className="flex items-center gap-4 mt-3 flex-wrap">
-              <div className="flex items-center gap-2">
-                <StarRating rating={tool.rating} size="md" />
-                <span className="font-semibold text-gray-900">{tool.rating}</span>
-                <span className="text-sm text-gray-500">({tool.reviewCount}件のレビュー)</span>
+              <div className="flex items-center gap-1.5 text-sm text-gray-600">
+                <Star className="w-4 h-4 text-amber-400 fill-amber-400" />
+                <span>{tool.reviews_count}件のレビュー</span>
               </div>
+              {tool.use_company_count != null && (
+                <div className="flex items-center gap-1 text-sm text-gray-500">
+                  <Users className="w-4 h-4" />
+                  {tool.use_company_count.toLocaleString()}社が利用
+                </div>
+              )}
               <a
-                href={tool.website}
+                href={findyUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-sm text-indigo-600 hover:underline flex items-center gap-1"
               >
-                公式サイト <ExternalLink className="w-3.5 h-3.5" />
+                Findy Toolsで見る <ExternalLink className="w-3.5 h-3.5" />
               </a>
             </div>
+
+            {/* Feature badges */}
+            <div className="flex flex-wrap gap-2 mt-3">
+              {tool.is_trial === 1 && (
+                <span className="text-xs text-green-600 bg-green-50 px-2.5 py-1 rounded-full font-medium">
+                  無料体験あり
+                </span>
+              )}
+              {tool.is_japanese_support === 1 && (
+                <span className="text-xs text-blue-600 bg-blue-50 px-2.5 py-1 rounded-full font-medium flex items-center gap-1">
+                  <Globe2 className="w-3 h-3" /> 日本語サポート
+                </span>
+              )}
+              {tool.is_customer_success === 1 && (
+                <span className="text-xs text-purple-600 bg-purple-50 px-2.5 py-1 rounded-full font-medium">
+                  カスタマーサクセスあり
+                </span>
+              )}
+            </div>
           </div>
+
           <div className="flex flex-col gap-2 shrink-0">
             {contract ? (
               <Link to="/contracts" className="btn-secondary text-center">
                 契約を確認
               </Link>
             ) : (
-              <Link to="/procurement" className="btn-primary text-center flex items-center gap-1">
+              <Link to="/procurement" className="btn-primary text-center flex items-center gap-1 justify-center">
                 <Plus className="w-4 h-4" /> 調達申請
               </Link>
             )}
@@ -93,150 +222,33 @@ export function ToolDetail() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Reviews */}
-        <div className="lg:col-span-2 space-y-4">
-          {/* Rating summary */}
-          <div className="card p-5">
-            <h2 className="font-semibold text-gray-900 mb-4">レビュー概要</h2>
-            <div className="flex gap-6 items-start">
-              <div className="text-center shrink-0">
-                <p className="text-5xl font-bold text-gray-900">{avgRating}</p>
-                <StarRating rating={avgRating} size="md" />
-                <p className="text-sm text-gray-500 mt-1">{tool.reviewCount}件</p>
-              </div>
-              <div className="flex-1 space-y-1.5">
-                {ratingDist.map(({ star, pct }) => (
-                  <div key={star} className="flex items-center gap-2 text-sm">
-                    <span className="text-gray-500 w-4">{star}</span>
-                    <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-amber-400 rounded-full"
-                        style={{ width: `${pct}%` }}
-                      />
-                    </div>
-                    <span className="text-gray-400 w-8 text-right">{pct}%</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {/* Review list */}
-          {tool.reviews.map((review) => (
-            <div key={review.id} className="card p-5">
-              <div className="flex items-start justify-between mb-2">
-                <div>
-                  <p className="font-medium text-gray-900">{review.title}</p>
-                  <div className="flex items-center gap-2 mt-1">
-                    <StarRating rating={review.rating} />
-                    <span className="text-xs text-gray-500">{review.userName} · {review.userRole}</span>
-                  </div>
-                </div>
-                <span className="text-xs text-gray-400">{review.createdAt}</span>
-              </div>
-              <p className="text-sm text-gray-700 mt-2">{review.body}</p>
-              <div className="grid grid-cols-2 gap-4 mt-3">
-                <div>
-                  <p className="text-xs font-medium text-green-600 mb-1 flex items-center gap-1">
-                    <CheckCircle2 className="w-3 h-3" /> 良かった点
-                  </p>
-                  <ul className="space-y-0.5">
-                    {review.pros.map((p) => (
-                      <li key={p} className="text-xs text-gray-600">· {p}</li>
-                    ))}
-                  </ul>
-                </div>
-                <div>
-                  <p className="text-xs font-medium text-red-500 mb-1 flex items-center gap-1">
-                    <XCircle className="w-3 h-3" /> 気になった点
-                  </p>
-                  <ul className="space-y-0.5">
-                    {review.cons.map((c) => (
-                      <li key={c} className="text-xs text-gray-600">· {c}</li>
-                    ))}
-                  </ul>
-                </div>
-              </div>
-              <div className="flex items-center gap-1 mt-3 text-xs text-gray-400">
-                <ThumbsUp className="w-3 h-3" />
-                {review.helpful}人が参考になったと回答
-              </div>
-            </div>
+      {/* Reviews */}
+      {tool.reviews.length > 0 ? (
+        <div className="space-y-4">
+          <h2 className="font-semibold text-gray-900 text-lg">
+            レビュー ({tool.reviews.length}件)
+          </h2>
+          {tool.reviews.map((r) => (
+            <ReviewCard key={r.id} review={r} />
           ))}
         </div>
-
-        {/* Pricing */}
-        <div className="space-y-4">
-          <div className="card p-5">
-            <h2 className="font-semibold text-gray-900 mb-4">料金プラン</h2>
-            <div className="space-y-3">
-              {tool.pricingPlans.map((plan, i) => (
-                <div
-                  key={i}
-                  className={`rounded-xl border p-4 ${
-                    i === 1 ? 'border-indigo-300 bg-indigo-50' : 'border-gray-200'
-                  }`}
-                >
-                  {i === 1 && (
-                    <span className="text-xs text-indigo-600 font-medium bg-indigo-100 px-2 py-0.5 rounded-full mb-2 inline-block">
-                      おすすめ
-                    </span>
-                  )}
-                  <p className="font-semibold text-gray-900">{plan.name}</p>
-                  <p className="text-xl font-bold text-gray-900 mt-1">
-                    {plan.price === 0 ? (
-                      <span className="text-green-600">無料</span>
-                    ) : (
-                      <>
-                        {plan.currency === 'USD' ? '$' : '¥'}
-                        {plan.price}
-                        <span className="text-sm font-normal text-gray-500">
-                          /{plan.cycle === 'monthly' ? '月' : '年'}
-                          {plan.perSeat && '/ユーザー'}
-                        </span>
-                      </>
-                    )}
-                  </p>
-                  <ul className="mt-2 space-y-1">
-                    {plan.features.map((f) => (
-                      <li key={f} className="text-xs text-gray-600 flex items-center gap-1.5">
-                        <CheckCircle2 className="w-3 h-3 text-green-500 shrink-0" />
-                        {f}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Contract info */}
-          {contract && (
-            <div className="card p-5">
-              <h2 className="font-semibold text-gray-900 mb-3">契約情報</h2>
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-gray-500">プラン</span>
-                  <span className="font-medium">{contract.plan}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-500">シート</span>
-                  <span className="font-medium">{contract.usedSeats}/{contract.seats}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-500">月額</span>
-                  <span className="font-medium">¥{contract.monthlyAmount.toLocaleString()}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-500">更新日</span>
-                  <span className="font-medium">{contract.renewalDate}</span>
-                </div>
-              </div>
-            </div>
-          )}
+      ) : (
+        <div className="card p-6 text-center">
+          <Star className="w-10 h-10 text-gray-300 mx-auto mb-2" />
+          <p className="text-gray-500 text-sm">まだレビューデータがありません</p>
+          <p className="text-gray-400 text-xs mt-1">
+            「データ同期」からフルスクレイプを実行するとレビューが取得されます
+          </p>
+          <a
+            href={findyUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-3 inline-flex items-center gap-1 text-sm text-indigo-600 hover:underline"
+          >
+            Findy Toolsでレビューを見る <ExternalLink className="w-3.5 h-3.5" />
+          </a>
         </div>
-      </div>
+      )}
     </div>
   )
 }
