@@ -2,7 +2,7 @@ services:
   - type: web
     name: findy-tools-hub-api
     runtime: docker
-    dockerfilePath: ./Dockerfile.server
+    dockerfilePath: ./Dockerfile
     plan: free           # 無料プラン（15分無操作でスリープ）
     autoDeploy: true     # main ブランチ push で自動デプロイ
     healthCheckPath: /api/health
