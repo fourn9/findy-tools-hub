@@ -13,7 +13,7 @@ const DELAY_MS = 1500 // サーバー負荷軽減のため1.5秒間隔
 interface FindyProduct {
   id: number
   alias: string
-  pagePath: string
+  pagePath?: string
   name: string
   description?: string
   squareLogoUrl?: string
@@ -65,15 +65,79 @@ async function fetchHtml(url: string): Promise<string> {
 // ──────────────────────────────────────────────
 
 /**
+ * JavaScript文字列リテラルを文字単位でパースして正確にデコードする
+ * 正規表現だと "])" が文字列途中にある場合に誤終端する問題を回避
+ *
+ * @param src    スクリプト全文
+ * @param quoteIdx  開始 `"` の位置
+ * @returns デコードされた文字列、またはパース失敗時は null
+ */
+function parseJsStringAt(src: string, quoteIdx: number): string | null {
+  if (src[quoteIdx] !== '"') return null
+  let i = quoteIdx + 1
+  let result = ''
+
+  while (i < src.length) {
+    const ch = src[i]
+    if (ch === '\\') {
+      const next = src[i + 1]
+      switch (next) {
+        case '"':  result += '"';  i += 2; break
+        case '\\': result += '\\'; i += 2; break
+        case 'n':  result += '\n'; i += 2; break
+        case 'r':  result += '\r'; i += 2; break
+        case 't':  result += '\t'; i += 2; break
+        case 'u': {
+          const hex = src.slice(i + 2, i + 6)
+          if (/^[0-9a-fA-F]{4}$/.test(hex)) {
+            result += String.fromCharCode(parseInt(hex, 16))
+            i += 6
+          } else {
+            result += next
+            i += 2
+          }
+          break
+        }
+        default: result += next; i += 2; break
+      }
+    } else if (ch === '"') {
+      return result // 正常終端
+    } else {
+      result += ch
+      i++
+    }
+  }
+  return null // 文字列が閉じられなかった
+}
+
+/**
+ * RSC 行テキストから JSON オブジェクトをパースして blobs に追加
+ * 形式: "数字:JSONテキスト\n" or "数字:T数字,JSONテキスト"
+ */
+function parseRscLines(text: string, blobs: any[]): void {
+  for (const line of text.split('\n')) {
+    // 行頭の "数字:" を除去
+    const jsonPart = line.replace(/^\d+:[TI]?\d*,?/, '').trim()
+    if (jsonPart.startsWith('{') || jsonPart.startsWith('[')) {
+      try {
+        blobs.push(JSON.parse(jsonPart))
+      } catch {
+        // parse失敗は無視（不完全行など）
+      }
+    }
+  }
+}
+
+/**
  * Next.js RSC ペイロードから JSON オブジェクト群を抽出する
  * __NEXT_DATA__ と self.__next_f の両方に対応
  */
 function extractJsonBlobs(html: string): any[] {
   const blobs: any[] = []
 
-  // __NEXT_DATA__ (Pages Router)
+  // 1) __NEXT_DATA__ (Pages Router フォールバック)
   const ndMatch = html.match(
-    /<script id="__NEXT_DATA__" type="application\/json">([\s\S]*?)<\/script>/,
+    /<script[^>]*id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/,
   )
   if (ndMatch) {
     try {
@@ -81,20 +145,26 @@ function extractJsonBlobs(html: string): any[] {
     } catch {}
   }
 
-  // self.__next_f.push([1, "..."]) — App Router RSC payload (JSON文字列が入れ子)
-  for (const m of html.matchAll(/self\.__next_f\.push\(\[1,"([\s\S]*?)"\]\)/g)) {
-    try {
-      const decoded = m[1].replace(/\\n/g, '\n').replace(/\\"/g, '"').replace(/\\\\/g, '\\')
-      // RSC フォーマット: 行頭に "数字:" がついた JSON
-      for (const line of decoded.split('\n')) {
-        const jsonPart = line.replace(/^\d+:/, '')
-        if (jsonPart.startsWith('{') || jsonPart.startsWith('[')) {
-          try {
-            blobs.push(JSON.parse(jsonPart))
-          } catch {}
-        }
-      }
-    } catch {}
+  // 2) App Router: self.__next_f.push([1, "...RSCペイロード..."])
+  //    ※ 正規表現で文字列境界を探すと "])" が途中にある場合に誤終端するため
+  //       文字単位パーサー (parseJsStringAt) を使用する
+  const pushMarker = 'self.__next_f.push([1,"'
+  let searchFrom = 0
+
+  while (true) {
+    const markerIdx = html.indexOf(pushMarker, searchFrom)
+    if (markerIdx === -1) break
+
+    // マーカー末尾 = 開始 `"` の位置
+    const quoteIdx = markerIdx + pushMarker.length - 1
+    const content = parseJsStringAt(html, quoteIdx)
+
+    if (content !== null) {
+      parseRscLines(content, blobs)
+    }
+
+    // 次の検索開始位置を進める
+    searchFrom = markerIdx + pushMarker.length
   }
 
   return blobs
@@ -138,6 +208,9 @@ function collectReviews(obj: any, results: FindyReview[] = []): FindyReview[] {
 // DB 書き込み
 // ──────────────────────────────────────────────
 function upsertTool(p: FindyProduct) {
+  // pagePath が RSC ペイロードに含まれない場合は alias と id から構築
+  const pagePath = p.pagePath ?? `/products/${p.alias}/${p.id}`
+
   db.run(
     `INSERT INTO tools (
       id, alias, page_path, name, description, logo_url,
@@ -147,6 +220,7 @@ function upsertTool(p: FindyProduct) {
     ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'))
     ON CONFLICT(alias) DO UPDATE SET
       name                 = excluded.name,
+      page_path            = COALESCE(excluded.page_path, page_path),
       description          = COALESCE(excluded.description, description),
       logo_url             = COALESCE(excluded.logo_url, logo_url),
       reviews_count        = excluded.reviews_count,
@@ -161,7 +235,7 @@ function upsertTool(p: FindyProduct) {
     [
       p.id,
       p.alias,
-      p.pagePath,
+      pagePath,
       p.name,
       p.description ?? null,
       p.squareLogoUrl ?? null,
@@ -210,25 +284,48 @@ function upsertReview(toolId: number, r: FindyReview) {
 // スクレイプ本体
 // ──────────────────────────────────────────────
 
-/** 製品一覧ページ (全159ページ) からツール基本情報を取得 */
+/** 製品一覧ページ (全ページ) からツール基本情報を取得 */
 async function scrapeProductList(
   onPage: (page: number, count: number) => void,
 ): Promise<number> {
   let total = 0
+  let emptyStreak = 0 // 連続して0件のページ数
 
-  for (let page = 1; page <= 200; page++) {
-    const html = await fetchHtml(`${BASE_URL}/products?page=${page}`)
+  for (let page = 1; page <= 300; page++) {
+    const url = `${BASE_URL}/products?page=${page}`
+    let html: string
+
+    try {
+      html = await fetchHtml(url)
+    } catch (err) {
+      console.warn(`  Warning: failed to fetch page ${page}:`, err)
+      emptyStreak++
+      if (emptyStreak >= 3) {
+        console.log(`  3 consecutive fetch errors, stopping.`)
+        break
+      }
+      await sleep(DELAY_MS)
+      continue
+    }
+
     const blobs = extractJsonBlobs(html)
     const products = blobs.flatMap((b) => collectProducts(b))
 
     if (products.length === 0) {
-      console.log(`  No products on page ${page}, stopping.`)
-      break
+      emptyStreak++
+      console.log(`  No products on page ${page} (streak: ${emptyStreak})`)
+      // 3ページ連続で0件の場合のみ終了（一時的な取得失敗に対応）
+      if (emptyStreak >= 3) {
+        console.log(`  3 consecutive empty pages, stopping.`)
+        break
+      }
+    } else {
+      emptyStreak = 0
+      for (const p of products) upsertTool(p)
+      total += products.length
+      onPage(page, total)
     }
 
-    for (const p of products) upsertTool(p)
-    total += products.length
-    onPage(page, total)
     await sleep(DELAY_MS)
   }
 
@@ -240,7 +337,7 @@ async function scrapeProductReviews(
   onProduct: (alias: string, reviewCount: number) => void,
 ): Promise<void> {
   const tools = db
-    .query<{ id: number; alias: string; page_path: string }, []>(
+    .query<{ id: number; alias: string; page_path: string | null }, []>(
       'SELECT id, alias, page_path FROM tools WHERE reviews_count > 0 ORDER BY reviews_count DESC',
     )
     .all()
@@ -249,7 +346,9 @@ async function scrapeProductReviews(
 
   for (const tool of tools) {
     try {
-      const url = `${BASE_URL}${tool.page_path}`
+      // page_path が設定されていない場合は alias と id から構築
+      const path = tool.page_path ?? `/products/${tool.alias}/${tool.id}`
+      const url = `${BASE_URL}${path}`
       const html = await fetchHtml(url)
       const blobs = extractJsonBlobs(html)
       const reviews = blobs.flatMap((b) => collectReviews(b))
