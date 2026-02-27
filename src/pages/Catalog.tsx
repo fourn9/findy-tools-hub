@@ -1,10 +1,10 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import {
   Search, Star, Globe2, Users, CheckCircle2,
-  ChevronLeft, ChevronRight, RefreshCw, AlertCircle,
+  ChevronLeft, ChevronRight, RefreshCw, AlertCircle, Loader2,
 } from 'lucide-react'
-import { getTools, type ApiTool } from '../lib/api'
+import { getTools, getSyncStatus, startSync, type ApiTool } from '../lib/api'
 
 const FINDY_BASE = 'https://findy-tools.io'
 
@@ -34,6 +34,11 @@ export function Catalog() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
+  // 自動同期用
+  const [autoSyncing, setAutoSyncing] = useState(false)
+  const [syncProgress, setSyncProgress] = useState(0)
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
   const LIMIT = 24
 
   const fetchTools = useCallback(async (p: number, q: string) => {
@@ -44,28 +49,119 @@ export function Catalog() {
       setTools(res.tools)
       setTotal(res.total)
       setTotalPages(res.totalPages)
+      return res.total
     } catch (e) {
       setError(e instanceof Error ? e.message : 'データ取得エラー')
+      return -1
     } finally {
       setLoading(false)
     }
   }, [])
 
+  // 自動同期ポーリング
+  const startAutoSync = useCallback(async () => {
+    if (autoSyncing) return
+    setAutoSyncing(true)
+    setSyncProgress(0)
+
+    try {
+      // 既に実行中かチェック
+      const status = await getSyncStatus()
+      if (!status.running) {
+        await startSync('list_only')
+      }
+
+      // ポーリング（3秒ごと、最大15分）
+      let attempts = 0
+      pollRef.current = setInterval(async () => {
+        attempts++
+        try {
+          const s = await getSyncStatus()
+          setSyncProgress(s.toolCount)
+
+          if (!s.running || attempts > 300) {
+            clearInterval(pollRef.current!)
+            pollRef.current = null
+            setAutoSyncing(false)
+            // データ再取得
+            await fetchTools(1, '')
+          }
+        } catch {
+          // ポーリング中のエラーは無視して継続
+        }
+      }, 3000)
+    } catch (e) {
+      setAutoSyncing(false)
+      setError(e instanceof Error ? e.message : '同期開始エラー')
+    }
+  }, [autoSyncing, fetchTools])
+
+  // 初回ロード
   useEffect(() => {
     fetchTools(page, search)
   }, [page, search, fetchTools])
 
-  // 検索: Enterキーで確定
+  // DB空の場合は自動同期開始
+  useEffect(() => {
+    if (!loading && total === 0 && !error && !autoSyncing) {
+      startAutoSync()
+    }
+  }, [loading, total, error, autoSyncing, startAutoSync])
+
+  // アンマウント時にポーリング停止
+  useEffect(() => {
+    return () => { if (pollRef.current) clearInterval(pollRef.current) }
+  }, [])
+
   const handleSearch = () => {
     setSearch(inputValue)
     setPage(1)
   }
 
-  // ソートはフロント側でのみ適用（ページ内）
   const sorted = [...tools].sort((a, b) => {
     if (sortBy === 'reviews') return b.reviews_count - a.reviews_count
     return a.name.localeCompare(b.name)
   })
+
+  // 自動同期中の表示
+  if (autoSyncing) {
+    return (
+      <div className="p-6 space-y-6">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">ツールカタログ</h1>
+          <p className="text-sm text-gray-500 mt-1">Findy Tools のデータを同期しています</p>
+        </div>
+        <div className="card p-8 flex flex-col items-center gap-4 text-center">
+          <div className="w-16 h-16 rounded-full bg-indigo-50 flex items-center justify-center">
+            <RefreshCw className="w-8 h-8 text-indigo-500 animate-spin" />
+          </div>
+          <div>
+            <p className="font-semibold text-gray-900 text-lg">Findy Tools からデータ取得中</p>
+            <p className="text-sm text-gray-500 mt-1">
+              初回アクセス時は約5〜8分かかります
+            </p>
+          </div>
+          <div className="w-full max-w-sm">
+            <div className="flex items-center justify-between text-sm text-gray-600 mb-2">
+              <span>取得済みツール数</span>
+              <span className="font-semibold text-indigo-600">{syncProgress.toLocaleString()} 件</span>
+            </div>
+            <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-indigo-500 rounded-full transition-all duration-500"
+                style={{ width: `${Math.min((syncProgress / 1300) * 100, 95)}%` }}
+              />
+            </div>
+            <p className="text-xs text-gray-400 mt-2">全約1,265件を取得中...</p>
+          </div>
+          <p className="text-xs text-gray-400 max-w-sm">
+            ※ Render 無料プランのため、15分間アクセスがないとサーバーがスリープし
+            データがリセットされます。ページを開いたまま待つとデータが復元されます。
+          </p>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="p-6 space-y-6">
@@ -76,13 +172,13 @@ export function Catalog() {
             Findy Tools のデータを同期 · {total.toLocaleString()}件のツール
           </p>
         </div>
-        <Link
-          to="/versions"
+        <button
+          onClick={() => startAutoSync()}
           className="flex items-center gap-1.5 text-sm text-indigo-600 hover:text-indigo-800"
         >
           <RefreshCw className="w-4 h-4" />
           データ同期
-        </Link>
+        </button>
       </div>
 
       {/* Search & Sort */}
@@ -124,20 +220,9 @@ export function Catalog() {
 
       {/* Loading */}
       {loading ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-          {Array.from({ length: 12 }).map((_, i) => (
-            <div key={i} className="card p-5 animate-pulse">
-              <div className="flex gap-3 mb-3">
-                <div className="w-12 h-12 bg-gray-200 rounded-xl shrink-0" />
-                <div className="flex-1 space-y-2">
-                  <div className="h-4 bg-gray-200 rounded w-3/4" />
-                  <div className="h-3 bg-gray-100 rounded w-1/2" />
-                </div>
-              </div>
-              <div className="h-3 bg-gray-100 rounded mb-1" />
-              <div className="h-3 bg-gray-100 rounded w-5/6" />
-            </div>
-          ))}
+        <div className="flex items-center gap-2 text-gray-500 py-4">
+          <Loader2 className="w-5 h-5 animate-spin" />
+          <span className="text-sm">読み込み中...</span>
         </div>
       ) : (
         <>
@@ -168,7 +253,7 @@ export function Catalog() {
                   <div className="flex items-center justify-between mt-2">
                     <div className="flex items-center gap-1.5 text-sm text-gray-500">
                       <Star className="w-4 h-4 text-amber-400 fill-amber-400" />
-                      <span>{tool.reviews_count > 0 ? `${tool.reviews_count}件のレビュー` : 'レビューなし'}</span>
+                      <span>{tool.reviews_count > 0 ? `${tool.reviews_count}件` : 'レビューなし'}</span>
                     </div>
                     <div className="flex gap-1.5">
                       {tool.is_trial === 1 && (
@@ -191,7 +276,6 @@ export function Catalog() {
                     </div>
                   )}
 
-                  {/* badges */}
                   <div className="flex flex-wrap gap-1 mt-2">
                     {tool.is_customer_success === 1 && (
                       <span className="text-xs text-purple-600 bg-purple-50 px-2 py-0.5 rounded-full flex items-center gap-0.5">
