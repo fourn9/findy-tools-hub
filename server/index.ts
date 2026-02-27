@@ -12,15 +12,23 @@ const app = new Hono()
 // ────────────────────────────────────────
 app.use('*', logger())
 
+// 環境変数 ALLOWED_ORIGINS (カンマ区切り) で追加オリジンを指定可能
+const extraOrigins = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(',').map((o) => o.trim())
+  : []
+
+const allowedOrigins = [
+  'http://localhost:5173',
+  'http://127.0.0.1:5173',
+  'http://localhost:4173',
+  'https://fourn9.github.io',
+  ...extraOrigins,
+]
+
 app.use(
   '*',
   cors({
-    origin: [
-      'http://localhost:5173',
-      'http://127.0.0.1:5173',
-      'http://localhost:4173',
-      'https://fourn9.github.io',
-    ],
+    origin: allowedOrigins,
     allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowHeaders: ['Content-Type', 'Authorization'],
   }),

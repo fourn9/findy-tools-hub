@@ -36,6 +36,9 @@ jobs:
           # GitHub Pages では /<リポジトリ名>/ がベースパスになる
           # 例: https://<username>.github.io/<repo-name>/
           BASE_URL: /${{ github.event.repository.name }}/
+          # Railway にデプロイしたバックエンドURL
+          # GitHub リポジトリ Settings > Secrets > VITE_API_URL に登録すること
+          VITE_API_URL: ${{ secrets.VITE_API_URL }}
         run: bun run build
 
       - name: Setup Pages
