@@ -1,0 +1,91 @@
+name: 🐛 バグ報告
+description: バグや予期しない動作を報告する
+title: "[Bug] "
+labels: ["bug", "triage"]
+assignees: []
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        バグ報告ありがとうございます。再現に必要な情報をできるだけ詳しく記入してください。
+
+  - type: textarea
+    id: description
+    attributes:
+      label: バグの内容
+      description: 何が起きましたか？
+      placeholder: 例）契約管理ページで CSV インポートをするとエラーが出る
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: 再現手順
+      description: バグを再現するための手順
+      value: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期待する動作
+      description: 本来どうなるべきか
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: 実際の動作
+      description: 実際に何が起きたか
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: 影響を受けるエリア
+      options:
+        - ダッシュボード
+        - 契約管理
+        - 調達申請
+        - 支出分析
+        - ツールカタログ
+        - 交渉スクリプト生成（Claude API）
+        - API / バックエンド
+        - デプロイ / インフラ
+        - その他
+    validations:
+      required: true
+
+  - type: dropdown
+    id: severity
+    attributes:
+      label: 深刻度
+      options:
+        - 🔴 Critical（サービス停止）
+        - 🟠 High（主要機能が壊れている）
+        - 🟡 Medium（機能が一部使えない）
+        - 🟢 Low（軽微な問題）
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: 環境情報
+      value: |
+        - OS:
+        - ブラウザ:
+        - Node/Bun バージョン:
+        - デプロイ環境: [ ] ローカル  [ ] Render  [ ] GitHub Pages
+
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: スクリーンショット / ログ
+      description: エラーメッセージやスクリーンショットがあれば貼り付けてください

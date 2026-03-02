@@ -1,0 +1,48 @@
+name: 🔧 技術的負債 / リファクタリング
+description: コード品質・パフォーマンス・セキュリティの改善提案
+title: "[Chore] "
+labels: ["chore", "tech-debt"]
+assignees: []
+
+body:
+  - type: dropdown
+    id: type
+    attributes:
+      label: 種別
+      options:
+        - リファクタリング
+        - パフォーマンス改善
+        - セキュリティ強化
+        - 依存関係の更新
+        - テストカバレッジ向上
+        - ドキュメント整備
+        - インフラ改善
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: 内容
+      description: 何を改善したいか、現状の問題点は何か
+    validations:
+      required: true
+
+  - type: textarea
+    id: impact
+    attributes:
+      label: 改善による効果
+      description: 改善することで何が良くなるか
+
+  - type: dropdown
+    id: effort
+    attributes:
+      label: 工数見込み
+      options:
+        - XS（1時間以内）
+        - S（半日）
+        - M（1〜2日）
+        - L（3〜5日）
+        - XL（1週間以上）
+    validations:
+      required: true

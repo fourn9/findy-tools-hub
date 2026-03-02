@@ -1,0 +1,57 @@
+name: Deploy Frontend (GitHub Pages)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "public/**"
+      - "index.html"
+      - "vite.config.ts"
+      - "package.json"
+      - "bun.lock"
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-frontend-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  build-and-deploy:
+    name: ビルド & デプロイ
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: 依存関係インストール
+        run: bun install --frozen-lockfile
+
+      - name: フロントエンド ビルド
+        run: bun run build
+        env:
+          VITE_API_URL: ${{ secrets.VITE_API_URL }}
+
+      - name: GitHub Pages 設定
+        uses: actions/configure-pages@v5
+
+      - name: Pages にアップロード
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist/
+
+      - name: デプロイ
+        id: deployment
+        uses: actions/deploy-pages@v4

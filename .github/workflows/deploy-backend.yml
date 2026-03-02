@@ -1,0 +1,46 @@
+name: Deploy Backend (Render)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "server/**"
+      - "Dockerfile"
+      - "render.yaml"
+      - "package.json"
+      - "bun.lock"
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-backend-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: Render デプロイトリガー
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Render デプロイ フック
+        run: |
+          curl -s -o /dev/null -w "%{http_code}" \
+            --max-time 30 \
+            "${{ secrets.RENDER_DEPLOY_HOOK_URL }}" \
+            | tee /tmp/render_response
+
+          STATUS=$(cat /tmp/render_response)
+          if [ "$STATUS" = "200" ] || [ "$STATUS" = "201" ]; then
+            echo "✅ Render デプロイトリガー成功 (HTTP $STATUS)"
+          else
+            echo "⚠️ Render デプロイトリガー応答: HTTP $STATUS"
+            echo "RENDER_DEPLOY_HOOK_URL が設定されていない場合、Render は git push で自動デプロイします"
+          fi
+
+      - name: デプロイ情報
+        run: |
+          echo "🚀 デプロイ情報"
+          echo "  コミット: ${{ github.sha }}"
+          echo "  ブランチ: ${{ github.ref_name }}"
+          echo "  実行者:   ${{ github.actor }}"
+          echo ""
+          echo "📋 Render ダッシュボード: https://dashboard.render.com"

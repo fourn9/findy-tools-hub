@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 📋 Notion 仕様書
+    url: https://www.notion.so/31604bf5e7e481b487ebfe50ffb5997a
+    about: SaaS Intelligence Platform サービス仕様書 v1.0
+  - name: 🚀 Render ダッシュボード
+    url: https://dashboard.render.com
+    about: バックエンドのデプロイ状況確認
+  - name: 🌐 GitHub Pages（フロントエンド）
+    url: https://fourn9.github.io/findy-tools-hub/
+    about: プロダクション環境
