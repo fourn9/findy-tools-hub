@@ -1,0 +1,41 @@
+version: 2
+updates:
+  # npm / bun パッケージ
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Asia/Tokyo"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "chore"
+    groups:
+      # 開発依存関係をまとめて更新
+      dev-dependencies:
+        dependency-type: "development"
+      # Vite / Tailwind 系
+      frontend-tooling:
+        patterns:
+          - "vite*"
+          - "@vitejs/*"
+          - "tailwindcss*"
+          - "autoprefixer*"
+      # Hono / Bun 系
+      backend-core:
+        patterns:
+          - "hono*"
+          - "bun*"
+
+  # GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+      time: "09:00"
+      timezone: "Asia/Tokyo"
+    labels:
+      - "dependencies"
+      - "ci"

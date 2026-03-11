@@ -1,70 +1,134 @@
-import { Database } from 'bun:sqlite'
-import { join } from 'path'
-import { mkdirSync } from 'fs'
+import postgres from 'postgres'
 
-const DATA_DIR = join(import.meta.dir, '../data')
-mkdirSync(DATA_DIR, { recursive: true })
-
-export const db = new Database(join(DATA_DIR, 'findy-tools.db'))
-
-db.run('PRAGMA journal_mode = WAL')
-db.run('PRAGMA foreign_keys = ON')
-
-db.run(`
-  CREATE TABLE IF NOT EXISTS tools (
-    id                   INTEGER PRIMARY KEY,
-    alias                TEXT    UNIQUE NOT NULL,
-    page_path            TEXT,
-    name                 TEXT    NOT NULL,
-    description          TEXT,
-    logo_url             TEXT,
-    reviews_count        INTEGER DEFAULT 0,
-    vendor_id            INTEGER,
-    vendor_name          TEXT,
-    is_trial             INTEGER DEFAULT 0,
-    is_japanese_support  INTEGER DEFAULT 0,
-    is_customer_success  INTEGER DEFAULT 0,
-    use_company_count    INTEGER,
-    tags                 TEXT,   -- JSON array
-    raw_data             TEXT,   -- JSON
-    scraped_at           TEXT    DEFAULT (datetime('now')),
-    updated_at           TEXT    DEFAULT (datetime('now'))
+if (!process.env.DATABASE_URL) {
+  throw new Error(
+    'DATABASE_URL is not set.\n' +
+      'ローカル開発: .env.example をコピーして .env を作成してください。\n' +
+      'Render: Dashboard の Environment Variables に DATABASE_URL を追加してください。',
   )
-`)
+}
 
-db.run(`
-  CREATE TABLE IF NOT EXISTS reviews (
-    id                      INTEGER PRIMARY KEY AUTOINCREMENT,
-    tool_id                 INTEGER NOT NULL REFERENCES tools(id) ON DELETE CASCADE,
-    external_id             TEXT,
-    page_path               TEXT,
-    title                   TEXT,
-    good_point              TEXT,   -- 良い点 (goodPoint1)
-    growth_point            TEXT,   -- 改善点 (growthPoint1)
-    introduction_background TEXT,   -- 導入背景
-    explanation_within_company TEXT, -- 社内への説明
-    reviewer_name           TEXT,
-    reviewer_avatar_url     TEXT,
-    reviewer_job_position   TEXT,   -- CTO, SRE, etc.
-    reviewer_job_types      TEXT,   -- JSON array
-    company_name            TEXT,
-    employee_size           TEXT,
-    engineer_employee_size  TEXT,
-    labels                  TEXT,   -- JSON array (導入/活用 tags)
-    scraped_at              TEXT    DEFAULT (datetime('now')),
-    UNIQUE(tool_id, external_id)
-  )
-`)
+export const sql = postgres(process.env.DATABASE_URL, {
+  max: 10,
+  idle_timeout: 20,
+  connect_timeout: 10,
+  // Render の PostgreSQL は自己署名証明書を使うため production では検証を緩和する
+  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+})
 
-db.run(`
-  CREATE TABLE IF NOT EXISTS sync_log (
-    id           INTEGER PRIMARY KEY AUTOINCREMENT,
-    started_at   TEXT    DEFAULT (datetime('now')),
-    completed_at TEXT,
-    tools_synced INTEGER DEFAULT 0,
-    status       TEXT    DEFAULT 'running',
-    error        TEXT
-  )
-`)
+export async function initDb(): Promise<void> {
+  await sql`
+    CREATE TABLE IF NOT EXISTS tools (
+      id                   INTEGER PRIMARY KEY,
+      alias                TEXT    UNIQUE NOT NULL,
+      page_path            TEXT,
+      name                 TEXT    NOT NULL,
+      description          TEXT,
+      logo_url             TEXT,
+      reviews_count        INTEGER DEFAULT 0,
+      vendor_id            INTEGER,
+      vendor_name          TEXT,
+      is_trial             INTEGER DEFAULT 0,
+      is_japanese_support  INTEGER DEFAULT 0,
+      is_customer_success  INTEGER DEFAULT 0,
+      use_company_count    INTEGER,
+      tags                 TEXT,
+      raw_data             TEXT,
+      scraped_at           TIMESTAMPTZ DEFAULT NOW(),
+      updated_at           TIMESTAMPTZ DEFAULT NOW()
+    )
+  `
 
-export default db
+  await sql`
+    CREATE TABLE IF NOT EXISTS reviews (
+      id                         SERIAL PRIMARY KEY,
+      tool_id                    INTEGER NOT NULL REFERENCES tools(id) ON DELETE CASCADE,
+      external_id                TEXT,
+      page_path                  TEXT,
+      title                      TEXT,
+      good_point                 TEXT,
+      growth_point               TEXT,
+      introduction_background    TEXT,
+      explanation_within_company TEXT,
+      reviewer_name              TEXT,
+      reviewer_avatar_url        TEXT,
+      reviewer_job_position      TEXT,
+      reviewer_job_types         TEXT,
+      company_name               TEXT,
+      employee_size              TEXT,
+      engineer_employee_size     TEXT,
+      labels                     TEXT,
+      scraped_at                 TIMESTAMPTZ DEFAULT NOW(),
+      UNIQUE(tool_id, external_id)
+    )
+  `
+
+  await sql`
+    CREATE TABLE IF NOT EXISTS sync_log (
+      id           SERIAL PRIMARY KEY,
+      started_at   TIMESTAMPTZ DEFAULT NOW(),
+      completed_at TIMESTAMPTZ,
+      tools_synced INTEGER DEFAULT 0,
+      status       TEXT DEFAULT 'running',
+      error        TEXT
+    )
+  `
+
+  // ────────────────────────────────────────
+  // SaaS Intelligence Platform テーブル
+  // ────────────────────────────────────────
+
+  await sql`
+    CREATE TABLE IF NOT EXISTS contracts (
+      id             SERIAL PRIMARY KEY,
+      tool_alias     TEXT,                       -- Findy Tools カタログの alias (任意)
+      tool_name      TEXT    NOT NULL,
+      tool_logo_url  TEXT,
+      status         TEXT    NOT NULL DEFAULT 'active',
+                                                 -- active | trial | pending | expired | cancelled
+      plan           TEXT,
+      seats          INTEGER NOT NULL DEFAULT 0,
+      used_seats     INTEGER NOT NULL DEFAULT 0,
+      monthly_amount INTEGER NOT NULL DEFAULT 0,
+      billing_cycle  TEXT    NOT NULL DEFAULT 'monthly', -- monthly | yearly
+      start_date     DATE,
+      renewal_date   DATE,
+      owner          TEXT,
+      department     TEXT,
+      notes          TEXT,
+      category       TEXT    NOT NULL DEFAULT 'other',
+                                                 -- ai_tool | dev_tool | productivity | communication | security | hr | finance | other
+      created_at     TIMESTAMPTZ DEFAULT NOW(),
+      updated_at     TIMESTAMPTZ DEFAULT NOW()
+    )
+  `
+
+  // カラムが存在しない場合のみ追加（既存 DB へのマイグレーション）
+  await sql`
+    ALTER TABLE contracts ADD COLUMN IF NOT EXISTS category TEXT NOT NULL DEFAULT 'other'
+  `
+
+  await sql`
+    CREATE TABLE IF NOT EXISTS procurement_requests (
+      id               SERIAL PRIMARY KEY,
+      tool_alias       TEXT,
+      tool_name        TEXT NOT NULL,
+      tool_logo_url    TEXT,
+      requester_name   TEXT NOT NULL,
+      requester_email  TEXT,
+      status           TEXT NOT NULL DEFAULT 'reviewing',
+                                                  -- draft | reviewing | approved | rejected | contracted
+      reason           TEXT,
+      expected_seats   INTEGER DEFAULT 0,
+      monthly_budget   INTEGER DEFAULT 0,
+      priority         TEXT DEFAULT 'medium',     -- low | medium | high
+      approver_name    TEXT,
+      approver_comment TEXT,
+      approved_at      TIMESTAMPTZ,
+      created_at       TIMESTAMPTZ DEFAULT NOW(),
+      updated_at       TIMESTAMPTZ DEFAULT NOW()
+    )
+  `
+}
+
+export default sql

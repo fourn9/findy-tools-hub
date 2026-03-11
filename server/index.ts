@@ -2,8 +2,11 @@ import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { logger } from 'hono/logger'
 import { toolsRouter } from './routes/tools'
-import { syncRouter } from './routes/sync'
-import './db' // DB初期化（テーブル作成）
+import { syncRouter, triggerSync } from './routes/sync'
+import { contractsRouter } from './routes/contracts'
+import { procurementRouter } from './routes/procurement'
+import { negotiateRouter } from './routes/negotiate'
+import { sql, initDb } from './db'
 
 const app = new Hono()
 
@@ -47,6 +50,22 @@ app.get('/api/health', (c) =>
 
 app.route('/api/tools', toolsRouter)
 app.route('/api/sync', syncRouter)
+app.route('/api/contracts', contractsRouter)
+app.route('/api/procurement', procurementRouter)
+app.route('/api/negotiate', negotiateRouter)
+
+// ────────────────────────────────────────
+// DB 初期化 & 起動時自動同期
+// テーブル作成後、ツールが 0 件なら自動スクレイプを開始する。
+// PostgreSQL は外部ホストなのでコンテナ再起動でもデータが保持される。
+// ────────────────────────────────────────
+await initDb()
+
+const [{ count }] = await sql<[{ count: string }]>`SELECT COUNT(*) AS count FROM tools`
+if (Number(count) === 0) {
+  console.log('📦 DB empty on startup — triggering auto-sync (list_only)')
+  triggerSync('list_only') // fire and forget
+}
 
 // ────────────────────────────────────────
 // 起動

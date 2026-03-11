@@ -3,11 +3,27 @@ services:
     name: findy-tools-hub-api
     runtime: docker
     dockerfilePath: ./Dockerfile
-    plan: free           # 無料プラン（15分無操作でスリープ）
-    autoDeploy: true     # main ブランチ push で自動デプロイ
+    plan: free
+    autoDeploy: true
     healthCheckPath: /api/health
     envVars:
       - key: PORT
         value: 3000
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: findy-tools-db
+          property: connectionString
+      - key: SYNC_SECRET
+        generateValue: true   # Render がランダム値を自動生成
       - key: ALLOWED_ORIGINS
-        value: ""        # 追加オリジンが必要な場合はここに記入
+        value: ""              # 追加オリジンが必要な場合はここに記入
+      - key: ANTHROPIC_API_KEY
+        sync: false            # Render ダッシュボードで手動設定
+
+databases:
+  - name: findy-tools-db
+    plan: free
+    databaseName: findy_tools
+    user: findy_tools

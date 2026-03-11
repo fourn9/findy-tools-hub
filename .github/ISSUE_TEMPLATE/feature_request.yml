@@ -1,0 +1,71 @@
+name: ✨ 機能要望
+description: 新機能や改善案を提案する
+title: "[Feature] "
+labels: ["enhancement"]
+assignees: []
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        機能要望ありがとうございます！仕様書のロードマップと照らし合わせて優先度を判断します。
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: 解決したい課題
+      description: どんな問題や不便さを解決したいですか？
+      placeholder: 例）複数の契約を一括で更新できないので、毎回一つずつ操作するのが大変
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: 提案する解決策
+      description: どのような機能・UI があれば解決できますか？
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: 対象エリア
+      options:
+        - ダッシュボード
+        - 契約管理
+        - 調達申請フロー
+        - 支出分析
+        - 交渉スクリプト生成
+        - 価格ベンチマーク
+        - ツールカタログ
+        - 認証 / マルチテナント
+        - API / バックエンド
+        - インフラ / CI/CD
+        - その他
+    validations:
+      required: true
+
+  - type: dropdown
+    id: mvp
+    attributes:
+      label: MVP との関連
+      description: 仕様書の MVP フェーズとの関連を選択してください
+      options:
+        - MVP に含まれている（優先実装）
+        - MVP 後の追加機能
+        - 不明
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: 代替案
+      description: 他に考えられるアプローチがあれば記載してください
+
+  - type: textarea
+    id: context
+    attributes:
+      label: 追加コンテキスト
+      description: ユースケース、参考 UI、競合サービスの例など

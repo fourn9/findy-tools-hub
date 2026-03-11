@@ -1,0 +1,80 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop, "feature/**", "fix/**", "chore/**"]
+  pull_request:
+    branches: [main, develop]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ────────────────────────────────────────
+  # 型チェック & ビルド検証
+  # ────────────────────────────────────────
+  typecheck:
+    name: TypeScript チェック
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: 依存関係インストール
+        run: bun install --frozen-lockfile
+
+      - name: 型チェック
+        run: bun x tsc --noEmit
+
+  build-frontend:
+    name: フロントエンド ビルド
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: 依存関係インストール
+        run: bun install --frozen-lockfile
+
+      - name: ビルド
+        run: bun run build
+        env:
+          VITE_API_URL: ${{ secrets.VITE_API_URL }}
+
+      - name: ビルド成果物をアップロード
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: dist/
+          retention-days: 7
+
+  # ────────────────────────────────────────
+  # PR チェック（ブランチ名・コミットメッセージ規約）
+  # ────────────────────────────────────────
+  lint-pr:
+    name: PR ルール確認
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: PR タイトル確認（Conventional Commits）
+        uses: amannn/action-semantic-pull-request@v5
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          types: |
+            feat
+            fix
+            chore
+            docs
+            refactor
+            test
+            perf
+            ci
+          requireScope: false
