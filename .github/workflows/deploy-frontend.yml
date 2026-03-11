@@ -13,8 +13,8 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: deploy-frontend-${{ github.ref }}
-  cancel-in-progress: true
+  group: pages
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -42,6 +42,7 @@ jobs:
       - name: フロントエンド ビルド
         run: bun run build
         env:
+          BASE_URL: /${{ github.event.repository.name }}/
           VITE_API_URL: ${{ secrets.VITE_API_URL }}
 
       - name: GitHub Pages 設定
