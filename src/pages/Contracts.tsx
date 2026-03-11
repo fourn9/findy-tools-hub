@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import {
   FileText, AlertTriangle, Calendar, Users, DollarSign,
-  Upload, X, Loader2, RefreshCw, Sparkles, Copy, Check,
+  Upload, X, Loader2, RefreshCw, Sparkles, Copy, Check, Bot,
 } from 'lucide-react'
 import {
   getContracts,
@@ -11,7 +11,34 @@ import {
   generateNegotiationScript,
   type ApiContract,
   type ContractStats,
+  type ContractCategory,
 } from '../lib/api'
+
+// ──────────────────────────────────────────────
+// カテゴリバッジ（AIツールのみ表示）
+// ──────────────────────────────────────────────
+const CATEGORY_LABEL: Partial<Record<ContractCategory, string>> = {
+  ai_tool:       'AIツール',
+  dev_tool:      '開発',
+  productivity:  '生産性',
+  communication: 'コミュニケーション',
+  security:      'セキュリティ',
+  hr:            '人事・労務',
+  finance:       '経理・財務',
+}
+
+function CategoryBadge({ category }: { category: ContractCategory }) {
+  if (category === 'other' || !CATEGORY_LABEL[category]) return null
+  const isAi = category === 'ai_tool'
+  return (
+    <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium ${
+      isAi ? 'bg-violet-100 text-violet-700' : 'bg-gray-100 text-gray-600'
+    }`}>
+      {isAi && <Bot className="w-3 h-3" />}
+      {CATEGORY_LABEL[category]}
+    </span>
+  )
+}
 
 // ──────────────────────────────────────────────
 // ステータスバッジ
@@ -81,6 +108,7 @@ function CsvImportModal({ onClose, onImported }: { onClose: () => void; onImport
                 <p>ツール名 / tool_name, ステータス / status</p>
                 <p>月額（円）/ monthly_amount, シート数 / seats</p>
                 <p>更新日 / renewal_date, 担当者 / owner, 部署 / department</p>
+                <p className="text-violet-600">カテゴリ / category（例: AIツール, 開発, 生産性）</p>
               </div>
 
               <div
@@ -319,23 +347,29 @@ function NegotiationModal({ contract, onClose }: { contract: ApiContract; onClos
 // メインページ
 // ──────────────────────────────────────────────
 export function Contracts() {
-  const [filter, setFilter] = useState<ApiContract['status'] | 'all'>('all')
-  const [contracts, setContracts] = useState<ApiContract[]>([])
+  const [filter, setFilter] = useState<ApiContract['status'] | 'all' | 'ai_tool'>('all')
+  const [allContracts, setAllContracts] = useState<ApiContract[]>([])
   const [stats, setStats] = useState<ContractStats | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [showImport, setShowImport] = useState(false)
   const [negotiatingContract, setNegotiatingContract] = useState<ApiContract | null>(null)
 
+  // カテゴリフィルターはクライアントサイドで行う
+  const contracts = filter === 'ai_tool'
+    ? allContracts.filter((c) => c.category === 'ai_tool')
+    : allContracts
+
   const load = async () => {
     try {
       setLoading(true)
       setError(null)
+      const statusParam = filter === 'all' || filter === 'ai_tool' ? undefined : filter
       const [contractsRes, statsRes] = await Promise.all([
-        getContracts({ status: filter === 'all' ? undefined : filter }),
+        getContracts({ status: statusParam }),
         getContractStats(),
       ])
-      setContracts(contractsRes.contracts)
+      setAllContracts(contractsRes.contracts)
       setStats(statsRes)
     } catch (err) {
       setError(String(err))
@@ -457,17 +491,19 @@ export function Contracts() {
 
       {/* フィルター */}
       <div className="flex gap-2 flex-wrap">
-        {(['all', 'active', 'trial', 'pending', 'expired', 'cancelled'] as const).map((s) => (
+        {(['all', 'ai_tool', 'active', 'trial', 'pending', 'expired', 'cancelled'] as const).map((s) => (
           <button
             key={s}
             onClick={() => setFilter(s)}
-            className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
+            className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
               filter === s
-                ? 'bg-indigo-600 text-white'
+                ? s === 'ai_tool' ? 'bg-violet-600 text-white' : 'bg-indigo-600 text-white'
                 : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'
             }`}
           >
+            {s === 'ai_tool' && <Bot className="w-3.5 h-3.5" />}
             {s === 'all' ? 'すべて'
+              : s === 'ai_tool' ? 'AIツール'
               : s === 'active' ? '利用中'
               : s === 'trial' ? 'トライアル'
               : s === 'pending' ? '手続き中'
@@ -542,6 +578,7 @@ export function Contracts() {
                           <span className="font-semibold text-gray-900">{c.tool_name}</span>
                         )}
                         <StatusBadge status={c.status} />
+                        <CategoryBadge category={c.category} />
                         {c.plan && (
                           <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
                             {c.plan}

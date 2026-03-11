@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import {
   TrendingUp, FileText, AlertTriangle, CheckCircle2,
-  Clock, ArrowUpRight, Package, Users, DollarSign, Loader2,
+  Clock, ArrowUpRight, Package, Users, DollarSign, Loader2, Bot,
 } from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts'
 import {
@@ -101,6 +101,7 @@ export function Dashboard() {
   const trialCount = contractStats?.statusCounts.trial ?? 0
   const reviewingCount = procStats?.reviewing ?? 0
   const renewalAlerts = contractStats?.renewalAlerts ?? []
+  const aiStats = contractStats?.aiToolsStats
 
   return (
     <div className="p-6 space-y-6">
@@ -348,6 +349,45 @@ export function Dashboard() {
                     </div>
                   )
                 })}
+              </div>
+            </div>
+          )}
+        {/* AIコスト概況 */}
+          {aiStats && aiStats.count > 0 && (
+            <div className="card p-5 border-indigo-100">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <Bot className="w-5 h-5 text-indigo-500" />
+                  <h2 className="font-semibold text-gray-900">AIコスト概況</h2>
+                </div>
+                <Link to="/spend-analysis" className="text-sm text-indigo-600 hover:underline flex items-center gap-1">
+                  詳細分析 <ArrowUpRight className="w-3 h-3" />
+                </Link>
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                <div className="bg-indigo-50 rounded-xl p-3">
+                  <p className="text-xs text-indigo-600 mb-1">AIツール月次支出</p>
+                  <p className="text-xl font-bold text-indigo-900">¥{Math.round(aiStats.monthlySpend / 10000)}万</p>
+                  <p className="text-xs text-indigo-500 mt-0.5">{aiStats.count}ツール</p>
+                </div>
+                <div className={`rounded-xl p-3 ${aiStats.unusedCost > 0 ? 'bg-red-50' : 'bg-gray-50'}`}>
+                  <p className={`text-xs mb-1 ${aiStats.unusedCost > 0 ? 'text-red-600' : 'text-gray-500'}`}>
+                    未使用シート無駄コスト
+                  </p>
+                  <p className={`text-xl font-bold ${aiStats.unusedCost > 0 ? 'text-red-700' : 'text-gray-700'}`}>
+                    ¥{Math.round(aiStats.unusedCost / 10000)}万/月
+                  </p>
+                  {aiStats.unusedCost > 0 && (
+                    <p className="text-xs text-red-400 mt-0.5">年間 ¥{Math.round(aiStats.unusedCost * 12 / 10000)}万</p>
+                  )}
+                </div>
+                <div className="bg-gray-50 rounded-xl p-3">
+                  <p className="text-xs text-gray-500 mb-1">AI支出比率</p>
+                  <p className="text-xl font-bold text-gray-800">
+                    {totalMonthlySpend > 0 ? Math.round((aiStats.monthlySpend / totalMonthlySpend) * 100) : 0}%
+                  </p>
+                  <p className="text-xs text-gray-400 mt-0.5">SaaS全体中</p>
+                </div>
               </div>
             </div>
           )}

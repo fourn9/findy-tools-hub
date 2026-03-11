@@ -96,9 +96,16 @@ export async function initDb(): Promise<void> {
       owner          TEXT,
       department     TEXT,
       notes          TEXT,
+      category       TEXT    NOT NULL DEFAULT 'other',
+                                                 -- ai_tool | dev_tool | productivity | communication | security | hr | finance | other
       created_at     TIMESTAMPTZ DEFAULT NOW(),
       updated_at     TIMESTAMPTZ DEFAULT NOW()
     )
+  `
+
+  // カラムが存在しない場合のみ追加（既存 DB へのマイグレーション）
+  await sql`
+    ALTER TABLE contracts ADD COLUMN IF NOT EXISTS category TEXT NOT NULL DEFAULT 'other'
   `
 
   await sql`

@@ -106,6 +106,10 @@ export const getSyncStatus = () => request<SyncStatus>('/api/sync/status')
 // ──────────────────────────────────────────────
 // 契約管理 (Contracts)
 // ──────────────────────────────────────────────
+export type ContractCategory =
+  | 'ai_tool' | 'dev_tool' | 'productivity'
+  | 'communication' | 'security' | 'hr' | 'finance' | 'other'
+
 export interface ApiContract {
   id: number
   tool_alias: string | null
@@ -122,6 +126,7 @@ export interface ApiContract {
   owner: string | null
   department: string | null
   notes: string | null
+  category: ContractCategory
   created_at: string
   updated_at: string
 }
@@ -136,6 +141,11 @@ export interface ContractStats {
   }
   totalMonthlySpend: number
   renewalAlerts: ApiContract[]
+  aiToolsStats: {
+    count: number
+    monthlySpend: number
+    unusedCost: number
+  }
 }
 
 export const getContracts = (params?: { status?: string; q?: string }) => {

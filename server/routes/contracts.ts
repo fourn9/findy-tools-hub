@@ -23,6 +23,7 @@ interface ContractRow {
   owner: string | null
   department: string | null
   notes: string | null
+  category: string
   created_at: string
   updated_at: string
 }
@@ -42,6 +43,7 @@ interface ContractInput {
   owner?: string
   department?: string
   notes?: string
+  category?: string
 }
 
 // ────────────────────────────────────────
@@ -81,6 +83,19 @@ contractsRouter.get('/stats', async (c) => {
     LIMIT 10
   `
 
+  // AIツール統計（未使用シートの無駄コスト含む）
+  const aiTools = await sql<ContractRow[]>`
+    SELECT * FROM contracts
+    WHERE category = 'ai_tool'
+      AND status IN ('active', 'trial')
+  `
+  const aiMonthlySpend = aiTools.reduce((sum, c) => sum + c.monthly_amount, 0)
+  const aiUnusedCost = aiTools.reduce((sum, c) => {
+    if (c.seats <= 0) return sum
+    const perSeat = c.monthly_amount / c.seats
+    return sum + (c.seats - c.used_seats) * perSeat
+  }, 0)
+
   return c.json({
     statusCounts: {
       active: Number(statusCounts.active),
@@ -91,6 +106,11 @@ contractsRouter.get('/stats', async (c) => {
     },
     totalMonthlySpend: Number(spendRow.total),
     renewalAlerts,
+    aiToolsStats: {
+      count: aiTools.length,
+      monthlySpend: aiMonthlySpend,
+      unusedCost: Math.round(aiUnusedCost),
+    },
   })
 })
 
@@ -150,7 +170,7 @@ contractsRouter.post('/', async (c) => {
     INSERT INTO contracts (
       tool_alias, tool_name, tool_logo_url, status, plan,
       seats, used_seats, monthly_amount, billing_cycle,
-      start_date, renewal_date, owner, department, notes
+      start_date, renewal_date, owner, department, notes, category
     ) VALUES (
       ${body.tool_alias ?? null},
       ${body.tool_name},
@@ -165,7 +185,8 @@ contractsRouter.post('/', async (c) => {
       ${body.renewal_date ?? null},
       ${body.owner ?? null},
       ${body.department ?? null},
-      ${body.notes ?? null}
+      ${body.notes ?? null},
+      ${body.category ?? 'other'}
     )
     RETURNING *
   `
@@ -196,6 +217,7 @@ contractsRouter.put('/:id', async (c) => {
       owner         = COALESCE(${body.owner         ?? null}, owner),
       department    = COALESCE(${body.department    ?? null}, department),
       notes         = COALESCE(${body.notes         ?? null}, notes),
+      category      = COALESCE(${body.category      ?? null}, category),
       updated_at    = NOW()
     WHERE id = ${id}
     RETURNING *
@@ -251,6 +273,7 @@ contractsRouter.post('/import/csv', async (c) => {
     'メモ': 'notes', 'notes': 'notes', '備考': 'notes',
     'ロゴurl': 'tool_logo_url', 'logo_url': 'tool_logo_url', 'tool_logo_url': 'tool_logo_url',
     'alias': 'tool_alias', 'tool_alias': 'tool_alias',
+    'カテゴリ': 'category', 'category': 'category', '種別': 'category',
   }
 
   const headers = rawHeaders.map((h) => headerMap[h] ?? h)
@@ -291,11 +314,23 @@ contractsRouter.post('/import/csv', async (c) => {
     const billingCycle = billingCycleMap[row.billing_cycle?.toLowerCase() ?? ''] ?? 'monthly'
 
     try {
+      // カテゴリの正規化
+      const categoryMap: Record<string, string> = {
+        'aiツール': 'ai_tool', 'ai_tool': 'ai_tool', 'ai tool': 'ai_tool', 'ai': 'ai_tool',
+        '開発': 'dev_tool', 'dev_tool': 'dev_tool', 'development': 'dev_tool',
+        '生産性': 'productivity', 'productivity': 'productivity',
+        'コミュニケーション': 'communication', 'communication': 'communication',
+        'セキュリティ': 'security', 'security': 'security',
+        '人事': 'hr', 'hr': 'hr',
+        '経理': 'finance', 'finance': 'finance',
+      }
+      const category = categoryMap[row.category?.toLowerCase() ?? ''] ?? 'other'
+
       const [contract] = await sql<ContractRow[]>`
         INSERT INTO contracts (
           tool_alias, tool_name, tool_logo_url, status, plan,
           seats, used_seats, monthly_amount, billing_cycle,
-          start_date, renewal_date, owner, department, notes
+          start_date, renewal_date, owner, department, notes, category
         ) VALUES (
           ${row.tool_alias || null},
           ${row.tool_name},
@@ -310,7 +345,8 @@ contractsRouter.post('/import/csv', async (c) => {
           ${row.renewal_date || null},
           ${row.owner || null},
           ${row.department || null},
-          ${row.notes || null}
+          ${row.notes || null},
+          ${category}
         )
         RETURNING *
       `
