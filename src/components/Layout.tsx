@@ -12,23 +12,19 @@ import {
   Search,
   ChevronDown,
   Boxes,
-  GitBranch,
   Menu,
   X,
-  Sparkles,
   Brain,
 } from 'lucide-react'
 
 const navItems: { path: string; label: string; icon: React.ElementType; highlight?: boolean }[] = [
   { path: '/', label: 'ダッシュボード', icon: LayoutDashboard },
-  { path: '/catalog', label: 'ツールカタログ', icon: Package },
-  { path: '/procurement', label: '調達管理', icon: ShoppingCart },
+  { path: '/ai-cost', label: 'AI ガバナンス', icon: Brain, highlight: true },
   { path: '/contracts', label: '契約管理', icon: FileText },
-  { path: '/accounts', label: 'アカウント管理', icon: Users },
-  { path: '/versions', label: 'バージョン管理', icon: GitBranch },
+  { path: '/procurement', label: '調達管理', icon: ShoppingCart },
   { path: '/spend', label: '支出分析', icon: TrendingUp },
-  { path: '/optimization', label: '支出最適化', icon: Sparkles, highlight: true },
-  { path: '/ai-cost', label: 'AIコスト最適化', icon: Brain, highlight: true },
+  { path: '/accounts', label: 'アカウント管理', icon: Users },
+  { path: '/catalog', label: 'ツールカタログ', icon: Package },
 ]
 
 export function Layout({ children }: { children: React.ReactNode }) {
@@ -48,7 +44,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
           </div>
           <div>
             <p className="font-bold text-gray-900 text-sm leading-tight">Findy Tools Hub</p>
-            <p className="text-xs text-gray-500">ツール管理プラットフォーム</p>
+            <p className="text-xs text-gray-500">AI ガバナンス & 調達管理</p>
           </div>
         </div>
 

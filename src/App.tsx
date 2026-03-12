@@ -6,9 +6,7 @@ import { ToolDetail } from './pages/ToolDetail'
 import { Procurement } from './pages/Procurement'
 import { Contracts } from './pages/Contracts'
 import { Accounts } from './pages/Accounts'
-import { Versions } from './pages/Versions'
 import { SpendAnalysis } from './pages/SpendAnalysis'
-import { Optimization } from './pages/Optimization'
 import { AiCostOptimization } from './pages/AiCostOptimization'
 
 function App() {
@@ -17,15 +15,13 @@ function App() {
       <Layout>
         <Routes>
           <Route path="/" element={<Dashboard />} />
+          <Route path="/ai-cost" element={<AiCostOptimization />} />
+          <Route path="/contracts" element={<Contracts />} />
+          <Route path="/procurement" element={<Procurement />} />
+          <Route path="/spend" element={<SpendAnalysis />} />
+          <Route path="/accounts" element={<Accounts />} />
           <Route path="/catalog" element={<Catalog />} />
           <Route path="/catalog/:id" element={<ToolDetail />} />
-          <Route path="/procurement" element={<Procurement />} />
-          <Route path="/contracts" element={<Contracts />} />
-          <Route path="/accounts" element={<Accounts />} />
-          <Route path="/versions" element={<Versions />} />
-          <Route path="/spend" element={<SpendAnalysis />} />
-          <Route path="/optimization" element={<Optimization />} />
-          <Route path="/ai-cost" element={<AiCostOptimization />} />
         </Routes>
       </Layout>
     </BrowserRouter>
