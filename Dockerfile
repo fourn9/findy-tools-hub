@@ -10,9 +10,6 @@ RUN bun install --frozen-lockfile --production
 # サーバーコードをコピー
 COPY server/ ./server/
 
-# SQLite データ保存ディレクトリを作成
-RUN mkdir -p /app/data
-
 EXPOSE 3000
 ENV NODE_ENV=production
 

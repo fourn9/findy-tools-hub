@@ -1,8 +1,8 @@
 /**
  * Findy Tools スクレイパー
- * https://findy-tools.io/products より製品・レビューデータを取得してSQLiteに保存する
+ * https://findy-tools.io/products より製品・レビューデータを取得してPostgreSQLに保存する
  */
-import db from '../db'
+import { sql } from '../db'
 
 const BASE_URL = 'https://findy-tools.io'
 const DELAY_MS = 1500 // サーバー負荷軽減のため1.5秒間隔
@@ -67,10 +67,6 @@ async function fetchHtml(url: string): Promise<string> {
 /**
  * JavaScript文字列リテラルを文字単位でパースして正確にデコードする
  * 正規表現だと "])" が文字列途中にある場合に誤終端する問題を回避
- *
- * @param src    スクリプト全文
- * @param quoteIdx  開始 `"` の位置
- * @returns デコードされた文字列、またはパース失敗時は null
  */
 function parseJsStringAt(src: string, quoteIdx: number): string | null {
   if (src[quoteIdx] !== '"') return null
@@ -101,22 +97,17 @@ function parseJsStringAt(src: string, quoteIdx: number): string | null {
         default: result += next; i += 2; break
       }
     } else if (ch === '"') {
-      return result // 正常終端
+      return result
     } else {
       result += ch
       i++
     }
   }
-  return null // 文字列が閉じられなかった
+  return null
 }
 
-/**
- * RSC 行テキストから JSON オブジェクトをパースして blobs に追加
- * 形式: "数字:JSONテキスト\n" or "数字:T数字,JSONテキスト"
- */
 function parseRscLines(text: string, blobs: any[]): void {
   for (const line of text.split('\n')) {
-    // 行頭の "数字:" を除去
     const jsonPart = line.replace(/^\d+:[TI]?\d*,?/, '').trim()
     if (jsonPart.startsWith('{') || jsonPart.startsWith('[')) {
       try {
@@ -130,7 +121,6 @@ function parseRscLines(text: string, blobs: any[]): void {
 
 /**
  * Next.js RSC ペイロードから JSON オブジェクト群を抽出する
- * __NEXT_DATA__ と self.__next_f の両方に対応
  */
 function extractJsonBlobs(html: string): any[] {
   const blobs: any[] = []
@@ -140,45 +130,30 @@ function extractJsonBlobs(html: string): any[] {
     /<script[^>]*id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/,
   )
   if (ndMatch) {
-    try {
-      blobs.push(JSON.parse(ndMatch[1]))
-    } catch {}
+    try { blobs.push(JSON.parse(ndMatch[1])) } catch {}
   }
 
   // 2) App Router: self.__next_f.push([1, "...RSCペイロード..."])
-  //    ※ 正規表現で文字列境界を探すと "])" が途中にある場合に誤終端するため
-  //       文字単位パーサー (parseJsStringAt) を使用する
   const pushMarker = 'self.__next_f.push([1,"'
   let searchFrom = 0
-
   while (true) {
     const markerIdx = html.indexOf(pushMarker, searchFrom)
     if (markerIdx === -1) break
-
-    // マーカー末尾 = 開始 `"` の位置
     const quoteIdx = markerIdx + pushMarker.length - 1
     const content = parseJsStringAt(html, quoteIdx)
-
-    if (content !== null) {
-      parseRscLines(content, blobs)
-    }
-
-    // 次の検索開始位置を進める
+    if (content !== null) parseRscLines(content, blobs)
     searchFrom = markerIdx + pushMarker.length
   }
 
   return blobs
 }
 
-/** JSON blob から再帰的に FindyProduct 配列を集める */
 function collectProducts(obj: any, results: FindyProduct[] = []): FindyProduct[] {
   if (!obj || typeof obj !== 'object') return results
-
   if (obj.__typename === 'Product' && typeof obj.id === 'number' && obj.alias) {
     if (!results.find((p) => p.id === obj.id)) results.push(obj as FindyProduct)
     return results
   }
-
   if (Array.isArray(obj)) {
     for (const item of obj) collectProducts(item, results)
   } else {
@@ -187,15 +162,12 @@ function collectProducts(obj: any, results: FindyProduct[] = []): FindyProduct[]
   return results
 }
 
-/** JSON blob から再帰的に FindyReview 配列を集める */
 function collectReviews(obj: any, results: FindyReview[] = []): FindyReview[] {
   if (!obj || typeof obj !== 'object') return results
-
   if (obj.__typename === 'ProductReview' && typeof obj.id === 'number') {
     if (!results.find((r) => r.id === obj.id)) results.push(obj as FindyReview)
     return results
   }
-
   if (Array.isArray(obj)) {
     for (const item of obj) collectReviews(item, results)
   } else {
@@ -205,91 +177,71 @@ function collectReviews(obj: any, results: FindyReview[] = []): FindyReview[] {
 }
 
 // ──────────────────────────────────────────────
-// DB 書き込み
+// DB 書き込み（async / PostgreSQL）
 // ──────────────────────────────────────────────
-function upsertTool(p: FindyProduct) {
-  // pagePath が RSC ペイロードに含まれない場合は alias と id から構築
+async function upsertTool(p: FindyProduct): Promise<void> {
   const pagePath = p.pagePath ?? `/products/${p.alias}/${p.id}`
 
-  db.run(
-    `INSERT INTO tools (
+  await sql`
+    INSERT INTO tools (
       id, alias, page_path, name, description, logo_url,
       reviews_count, vendor_id, vendor_name,
       is_trial, is_japanese_support, is_customer_success,
       use_company_count, raw_data, updated_at
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'))
-    ON CONFLICT(alias) DO UPDATE SET
-      name                 = excluded.name,
-      page_path            = COALESCE(excluded.page_path, page_path),
-      description          = COALESCE(excluded.description, description),
-      logo_url             = COALESCE(excluded.logo_url, logo_url),
-      reviews_count        = excluded.reviews_count,
-      vendor_id            = COALESCE(excluded.vendor_id, vendor_id),
-      vendor_name          = COALESCE(excluded.vendor_name, vendor_name),
-      is_trial             = excluded.is_trial,
-      is_japanese_support  = excluded.is_japanese_support,
-      is_customer_success  = excluded.is_customer_success,
-      use_company_count    = COALESCE(excluded.use_company_count, use_company_count),
-      raw_data             = excluded.raw_data,
-      updated_at           = datetime('now')`,
-    [
-      p.id,
-      p.alias,
-      pagePath,
-      p.name,
-      p.description ?? null,
-      p.squareLogoUrl ?? null,
-      p.reviewsCount ?? 0,
-      p.productVendor?.id ?? null,
-      p.productVendor?.name ?? null,
-      p.isExistsTrial ? 1 : 0,
-      p.isExistsJapaneseSupport ? 1 : 0,
-      p.isExistsCustomerSuccess ? 1 : 0,
-      p.useCompanyCount ?? null,
-      JSON.stringify(p),
-    ],
-  )
+    ) VALUES (
+      ${p.id}, ${p.alias}, ${pagePath}, ${p.name},
+      ${p.description ?? null}, ${p.squareLogoUrl ?? null},
+      ${p.reviewsCount ?? 0},
+      ${p.productVendor?.id ?? null}, ${p.productVendor?.name ?? null},
+      ${p.isExistsTrial ? 1 : 0}, ${p.isExistsJapaneseSupport ? 1 : 0}, ${p.isExistsCustomerSuccess ? 1 : 0},
+      ${p.useCompanyCount ?? null}, ${JSON.stringify(p)}, NOW()
+    )
+    ON CONFLICT (alias) DO UPDATE SET
+      name                = EXCLUDED.name,
+      page_path           = COALESCE(EXCLUDED.page_path, tools.page_path),
+      description         = COALESCE(EXCLUDED.description, tools.description),
+      logo_url            = COALESCE(EXCLUDED.logo_url, tools.logo_url),
+      reviews_count       = EXCLUDED.reviews_count,
+      vendor_id           = COALESCE(EXCLUDED.vendor_id, tools.vendor_id),
+      vendor_name         = COALESCE(EXCLUDED.vendor_name, tools.vendor_name),
+      is_trial            = EXCLUDED.is_trial,
+      is_japanese_support = EXCLUDED.is_japanese_support,
+      is_customer_success = EXCLUDED.is_customer_success,
+      use_company_count   = COALESCE(EXCLUDED.use_company_count, tools.use_company_count),
+      raw_data            = EXCLUDED.raw_data,
+      updated_at          = NOW()
+  `
 }
 
-function upsertReview(toolId: number, r: FindyReview) {
-  db.run(
-    `INSERT OR IGNORE INTO reviews (
+async function upsertReview(toolId: number, r: FindyReview): Promise<void> {
+  await sql`
+    INSERT INTO reviews (
       tool_id, external_id, page_path, title,
       good_point, growth_point, introduction_background, explanation_within_company,
       reviewer_name, reviewer_avatar_url, reviewer_job_position, reviewer_job_types,
       company_name, employee_size, engineer_employee_size, labels
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-    [
-      toolId,
-      String(r.id),
-      r.pagePath ?? null,
-      r.title ?? null,
-      r.goodPoint1 ?? null,
-      r.growthPoint1 ?? null,
-      r.introductionBackground ?? null,
-      r.explanationWithinCompany ?? null,
-      r.user?.profile?.name ?? null,
-      r.user?.profile?.avatarUrl ?? null,
-      r.reviewerJobPositionType ?? null,
-      JSON.stringify(r.reviewerJobTypes ?? []),
-      r.company?.name ?? null,
-      r.employeeSize ?? null,
-      r.engineerEmployeeSize ?? null,
-      JSON.stringify((r.productReviewLabels ?? []).map((l) => l.name)),
-    ],
-  )
+    ) VALUES (
+      ${toolId}, ${String(r.id)}, ${r.pagePath ?? null}, ${r.title ?? null},
+      ${r.goodPoint1 ?? null}, ${r.growthPoint1 ?? null},
+      ${r.introductionBackground ?? null}, ${r.explanationWithinCompany ?? null},
+      ${r.user?.profile?.name ?? null}, ${r.user?.profile?.avatarUrl ?? null},
+      ${r.reviewerJobPositionType ?? null}, ${JSON.stringify(r.reviewerJobTypes ?? [])},
+      ${r.company?.name ?? null}, ${r.employeeSize ?? null}, ${r.engineerEmployeeSize ?? null},
+      ${JSON.stringify((r.productReviewLabels ?? []).map((l) => l.name))}
+    )
+    ON CONFLICT (tool_id, external_id) DO NOTHING
+  `
 }
 
 // ──────────────────────────────────────────────
 // スクレイプ本体
 // ──────────────────────────────────────────────
 
-/** 製品一覧ページ (全ページ) からツール基本情報を取得 */
 async function scrapeProductList(
   onPage: (page: number, count: number) => void,
 ): Promise<number> {
   let total = 0
-  let emptyStreak = 0 // 連続して0件のページ数
+  let emptyStreak = 0
 
   for (let page = 1; page <= 300; page++) {
     const url = `${BASE_URL}/products?page=${page}`
@@ -314,14 +266,13 @@ async function scrapeProductList(
     if (products.length === 0) {
       emptyStreak++
       console.log(`  No products on page ${page} (streak: ${emptyStreak})`)
-      // 3ページ連続で0件の場合のみ終了（一時的な取得失敗に対応）
       if (emptyStreak >= 3) {
         console.log(`  3 consecutive empty pages, stopping.`)
         break
       }
     } else {
       emptyStreak = 0
-      for (const p of products) upsertTool(p)
+      for (const p of products) await upsertTool(p)
       total += products.length
       onPage(page, total)
     }
@@ -332,28 +283,26 @@ async function scrapeProductList(
   return total
 }
 
-/** 製品詳細ページからレビューを取得（reviews_count > 0 の製品のみ） */
 async function scrapeProductReviews(
   onProduct: (alias: string, reviewCount: number) => void,
 ): Promise<void> {
-  const tools = db
-    .query<{ id: number; alias: string; page_path: string | null }, []>(
-      'SELECT id, alias, page_path FROM tools WHERE reviews_count > 0 ORDER BY reviews_count DESC',
-    )
-    .all()
+  const tools = await sql<{ id: number; alias: string; page_path: string | null }[]>`
+    SELECT id, alias, page_path FROM tools
+    WHERE reviews_count > 0
+    ORDER BY reviews_count DESC
+  `
 
   console.log(`  Fetching reviews for ${tools.length} tools...`)
 
   for (const tool of tools) {
     try {
-      // page_path が設定されていない場合は alias と id から構築
       const path = tool.page_path ?? `/products/${tool.alias}/${tool.id}`
       const url = `${BASE_URL}${path}`
       const html = await fetchHtml(url)
       const blobs = extractJsonBlobs(html)
       const reviews = blobs.flatMap((b) => collectReviews(b))
 
-      for (const r of reviews) upsertReview(tool.id, r)
+      for (const r of reviews) await upsertReview(tool.id, r)
       onProduct(tool.alias, reviews.length)
       await sleep(DELAY_MS)
     } catch (err) {
@@ -368,10 +317,11 @@ async function scrapeProductReviews(
 
 export type SyncMode = 'full' | 'list_only' | 'reviews_only'
 
-export async function scrapeTools(
-  onComplete: (toolsSynced: number) => void,
-  mode: SyncMode = 'full',
-): Promise<void> {
+/**
+ * スクレイプを実行して取得したツール数を返す。
+ * 完了後の sync_log 更新は呼び出し元（sync.ts）が行う。
+ */
+export async function scrapeTools(mode: SyncMode = 'full'): Promise<number> {
   console.log(`🔄 Findy Tools sync started (mode: ${mode})`)
 
   let toolsSynced = 0
@@ -389,5 +339,5 @@ export async function scrapeTools(
   }
 
   console.log(`✅ Sync complete — ${toolsSynced} tools`)
-  onComplete(toolsSynced)
+  return toolsSynced
 }

@@ -2,9 +2,9 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import {
   Search, Star, Globe2, Users, CheckCircle2,
-  ChevronLeft, ChevronRight, RefreshCw, AlertCircle, Loader2,
+  ChevronLeft, ChevronRight, AlertCircle, Loader2, RefreshCw,
 } from 'lucide-react'
-import { getTools, getSyncStatus, startSync, type ApiTool } from '../lib/api'
+import { getTools, getSyncStatus, type ApiTool } from '../lib/api'
 
 const FINDY_BASE = 'https://findy-tools.io'
 
@@ -58,42 +58,33 @@ export function Catalog() {
     }
   }, [])
 
-  // 自動同期ポーリング
-  const startAutoSync = useCallback(async () => {
+  // 同期進捗ポーリング
+  // 同期のトリガーはサーバー起動時の自動実行のみ。
+  // フロントはステータスを読み取って表示するだけ。
+  const startAutoSync = useCallback(() => {
     if (autoSyncing) return
     setAutoSyncing(true)
     setSyncProgress(0)
 
-    try {
-      // 既に実行中かチェック
-      const status = await getSyncStatus()
-      if (!status.running) {
-        await startSync('list_only')
-      }
+    // ポーリング（3秒ごと、最大15分）
+    let attempts = 0
+    pollRef.current = setInterval(async () => {
+      attempts++
+      try {
+        const s = await getSyncStatus()
+        setSyncProgress(s.toolCount)
 
-      // ポーリング（3秒ごと、最大15分）
-      let attempts = 0
-      pollRef.current = setInterval(async () => {
-        attempts++
-        try {
-          const s = await getSyncStatus()
-          setSyncProgress(s.toolCount)
-
-          if (!s.running || attempts > 300) {
-            clearInterval(pollRef.current!)
-            pollRef.current = null
-            setAutoSyncing(false)
-            // データ再取得
-            await fetchTools(1, '')
-          }
-        } catch {
-          // ポーリング中のエラーは無視して継続
+        if (!s.running || attempts > 300) {
+          clearInterval(pollRef.current!)
+          pollRef.current = null
+          setAutoSyncing(false)
+          // データ再取得
+          fetchTools(1, '')
         }
-      }, 3000)
-    } catch (e) {
-      setAutoSyncing(false)
-      setError(e instanceof Error ? e.message : '同期開始エラー')
-    }
+      } catch {
+        // ポーリング中のエラーは無視して継続
+      }
+    }, 3000)
   }, [autoSyncing, fetchTools])
 
   // 初回ロード
@@ -172,13 +163,6 @@ export function Catalog() {
             Findy Tools のデータを同期 · {total.toLocaleString()}件のツール
           </p>
         </div>
-        <button
-          onClick={() => startAutoSync()}
-          className="flex items-center gap-1.5 text-sm text-indigo-600 hover:text-indigo-800"
-        >
-          <RefreshCw className="w-4 h-4" />
-          データ同期
-        </button>
       </div>
 
       {/* Search & Sort */}
