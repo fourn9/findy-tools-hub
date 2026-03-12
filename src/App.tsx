@@ -9,6 +9,7 @@ import { Accounts } from './pages/Accounts'
 import { Versions } from './pages/Versions'
 import { SpendAnalysis } from './pages/SpendAnalysis'
 import { Optimization } from './pages/Optimization'
+import { AiCostOptimization } from './pages/AiCostOptimization'
 
 function App() {
   return (
@@ -24,6 +25,7 @@ function App() {
           <Route path="/versions" element={<Versions />} />
           <Route path="/spend" element={<SpendAnalysis />} />
           <Route path="/optimization" element={<Optimization />} />
+          <Route path="/ai-cost" element={<AiCostOptimization />} />
         </Routes>
       </Layout>
     </BrowserRouter>

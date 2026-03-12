@@ -56,6 +56,15 @@ export interface Tool {
   isFindyVerified: boolean
 }
 
+export type ContractCategory =
+  | 'ai_tool'
+  | 'dev_tool'
+  | 'productivity'
+  | 'communication'
+  | 'security'
+  | 'infrastructure'
+  | 'other'
+
 export interface Contract {
   id: string
   toolId: string
@@ -71,6 +80,11 @@ export interface Contract {
   renewalDate: string
   owner: string
   department: string
+  category?: ContractCategory
+  // AI tool specific
+  usageType?: 'seat' | 'token' | 'usage'   // 課金方式
+  monthlyTokens?: number                    // 月間トークン使用量（概算）
+  engineerCount?: number                    // 対象エンジニア数
 }
 
 export interface AccountMember {

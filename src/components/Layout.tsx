@@ -16,6 +16,7 @@ import {
   Menu,
   X,
   Sparkles,
+  Brain,
 } from 'lucide-react'
 
 const navItems: { path: string; label: string; icon: React.ElementType; highlight?: boolean }[] = [
@@ -27,6 +28,7 @@ const navItems: { path: string; label: string; icon: React.ElementType; highligh
   { path: '/versions', label: 'バージョン管理', icon: GitBranch },
   { path: '/spend', label: '支出分析', icon: TrendingUp },
   { path: '/optimization', label: '支出最適化', icon: Sparkles, highlight: true },
+  { path: '/ai-cost', label: 'AIコスト最適化', icon: Brain, highlight: true },
 ]
 
 export function Layout({ children }: { children: React.ReactNode }) {
