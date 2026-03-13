@@ -131,4 +131,51 @@ export async function initDb(): Promise<void> {
   `
 }
 
+// ────────────────────────────────────────
+// シードデータ（テーブルが空の場合のみ投入）
+// ────────────────────────────────────────
+export async function seedDb(): Promise<void> {
+  const [{ count: contractCount }] = await sql<[{ count: string }]>`
+    SELECT COUNT(*) AS count FROM contracts
+  `
+  if (Number(contractCount) === 0) {
+    console.log('🌱 contracts テーブルが空 → モックデータを投入します')
+    await sql`
+      INSERT INTO contracts
+        (tool_name, tool_logo_url, status, plan, seats, used_seats, monthly_amount,
+         billing_cycle, start_date, renewal_date, owner, department, category)
+      VALUES
+        ('GitHub',                'https://cdn.simpleicons.org/github/181717',    'active',  'Enterprise',   30, 26,  45000, 'monthly', '2023-04-01', '2025-03-31', '田中 一郎', 'エンジニアリング', 'dev_tool'),
+        ('Slack',                 'https://cdn.simpleicons.org/slack/4A154B',     'active',  'Pro',          50, 46,  38000, 'monthly', '2023-01-01', '2025-12-31', '鈴木 花子', '全社',             'communication'),
+        ('Datadog',               'https://cdn.simpleicons.org/datadog/632CA6',   'active',  'Pro',          10,  8,  62000, 'monthly', '2024-01-01', '2025-12-31', '佐藤 次郎', 'SRE',              'dev_tool'),
+        ('Figma',                 'https://cdn.simpleicons.org/figma/F24E1E',     'active',  'Organization', 15, 11,  28000, 'monthly', '2023-07-01', '2025-06-30', '高橋 美咲', 'デザイン',         'dev_tool'),
+        ('Notion',                'https://cdn.simpleicons.org/notion/000000',    'active',  'Business',     40, 26,  32000, 'monthly', '2022-10-01', '2025-09-30', '伊藤 健司', '全社',             'productivity'),
+        ('Zoom',                  'https://cdn.simpleicons.org/zoom/2D8CFF',      'active',  'Business',     50, 28,  18000, 'monthly', '2022-04-01', '2025-03-31', '渡辺 明',   '全社',             'communication'),
+        ('GitHub Copilot',        'https://cdn.simpleicons.org/github/181717',    'active',  'Business',     40, 28, 160000, 'monthly', '2024-04-01', '2025-03-31', '田中 一郎', 'エンジニアリング', 'ai_tool'),
+        ('Claude API (Anthropic)','https://cdn.simpleicons.org/anthropic/D97757', 'active',  'API従量課金',   0,  0, 185000, 'monthly', '2024-06-01', '2025-05-31', '山田 竜也', 'エンジニアリング', 'ai_tool'),
+        ('ChatGPT Team',          'https://cdn.simpleicons.org/openai/412991',    'active',  'Team',         15,  9,  75000, 'monthly', '2024-03-01', '2025-02-28', '中村 奈々', 'プロダクト',       'ai_tool'),
+        ('Cursor',                'https://cdn.simpleicons.org/cursor/000000',    'pending', 'Pro',          30,  0,  60000, 'monthly', '2025-04-01', '2026-03-31', '田中 一郎', 'エンジニアリング', 'ai_tool'),
+        ('AWS',                   'https://cdn.simpleicons.org/amazonaws/FF9900', 'active',  'PayAsYouGo',    0,  0, 280000, 'monthly', '2020-01-01', NULL,          '小林 隆',   'インフラ',         'other')
+    `
+  }
+
+  const [{ count: procCount }] = await sql<[{ count: string }]>`
+    SELECT COUNT(*) AS count FROM procurement_requests
+  `
+  if (Number(procCount) === 0) {
+    console.log('🌱 procurement_requests テーブルが空 → モックデータを投入します')
+    await sql`
+      INSERT INTO procurement_requests
+        (tool_name, tool_logo_url, requester_name, requester_email, status,
+         reason, expected_seats, monthly_budget, priority, approver_name, approver_comment, approved_at)
+      VALUES
+        ('Cursor',         'https://cdn.simpleicons.org/cursor/000000',  '田中 一郎', 'tanaka@example.com',    'reviewing',  'GitHub Copilot と比較してコード補完の精度が高く、エンジニア30名の生産性向上が見込まれます。', 30, 60000, 'high',   NULL,        NULL,                                              NULL),
+        ('Perplexity Pro', '',                                           '中村 奈々', 'nakamura@example.com',  'approved',   'リサーチ業務の効率化。競合調査や技術調査の時間を50%削減できる見込みです。',                    5, 15000, 'medium', '山本 部長', '試験導入として承認。3ヶ月後に効果測定を実施してください。', '2026-03-08'),
+        ('Dify',           '',                                           '山田 竜也', 'yamada@example.com',    'reviewing',  'LLM アプリ開発基盤として。現在個別に実装しているプロンプト管理を一元化したい。',                10, 45000, 'high',   NULL,        NULL,                                              NULL),
+        ('Linear',         'https://cdn.simpleicons.org/linear/5E6AD2',  '田中 一郎', 'tanaka@example.com',    'contracted', 'Jira から移行。エンジニアチームの Issue 管理・スプリント計画の改善。',                           25, 35000, 'medium', '山本 部長', '承認。来月から移行プロジェクト開始。',                    '2026-02-11'),
+        ('Figma Dev Mode', 'https://cdn.simpleicons.org/figma/F24E1E',   '高橋 美咲', 'takahashi@example.com', 'rejected',   '既存の Figma Organization プランで Dev Mode が利用可能になったため不要と判断。',                 15, 20000, 'low',    '山本 部長', '既存契約に含まれているため却下。IT部門に確認を。',         NULL)
+    `
+  }
+}
+
 export default sql

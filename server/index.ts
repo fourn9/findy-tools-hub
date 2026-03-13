@@ -7,7 +7,7 @@ import { contractsRouter } from './routes/contracts'
 import { procurementRouter } from './routes/procurement'
 import { negotiateRouter } from './routes/negotiate'
 import { aiUsageRouter } from './routes/aiUsage'
-import { sql, initDb } from './db'
+import { sql, initDb, seedDb } from './db'
 
 const app = new Hono()
 
@@ -62,6 +62,7 @@ app.route('/api/ai-usage', aiUsageRouter)
 // PostgreSQL は外部ホストなのでコンテナ再起動でもデータが保持される。
 // ────────────────────────────────────────
 await initDb()
+await seedDb()
 
 const [{ count }] = await sql<[{ count: string }]>`SELECT COUNT(*) AS count FROM tools`
 if (Number(count) === 0) {

@@ -1,13 +1,18 @@
 import { createClient } from '@supabase/supabase-js'
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+const supabaseUrl     = import.meta.env.VITE_SUPABASE_URL     as string | undefined
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined
 
-if (!supabaseUrl || !supabaseAnonKey) {
-  throw new Error('Missing Supabase environment variables. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in .env.local')
-}
+// 環境変数が未設定でもアプリが起動できるようにする（認証・Supabase 機能は無効化）
+const DUMMY_URL = 'https://placeholder.supabase.co'
+const DUMMY_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.placeholder'
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey)
+export const supabaseConfigured = !!(supabaseUrl && supabaseAnonKey)
+
+export const supabase = createClient(
+  supabaseUrl     ?? DUMMY_URL,
+  supabaseAnonKey ?? DUMMY_KEY,
+)
 
 // ─── DB 型定義 ────────────────────────────────────────────────
 

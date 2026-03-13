@@ -3,6 +3,7 @@
  *
  * - 開発時: VITE_API_URL 未設定 → Vite プロキシ経由で /api/* → localhost:3000
  * - 本番時: VITE_API_URL=https://xxx.railway.app を設定 → 直接リクエスト
+ * - バックエンド未起動時: モックデータにフォールバック
  */
 const BASE = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') ?? ''
 
@@ -16,6 +17,66 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     throw new Error(`API ${res.status}: ${text || res.statusText}`)
   }
   return res.json() as Promise<T>
+}
+
+// ──────────────────────────────────────────────
+// モックデータ（バックエンド未起動時のフォールバック）
+// ──────────────────────────────────────────────
+const MOCK_CONTRACTS: ApiContract[] = [
+  { id:1,  tool_alias:'github',    tool_name:'GitHub',                tool_logo_url:'https://cdn.simpleicons.org/github/181717',    status:'active',  plan:'Enterprise',   seats:30, used_seats:26, monthly_amount:45000,  billing_cycle:'monthly', start_date:'2023-04-01', renewal_date:'2025-03-31', owner:'田中 一郎', department:'エンジニアリング', notes:null, category:'dev_tool',      created_at:'2023-04-01T00:00:00Z', updated_at:'2024-01-01T00:00:00Z' },
+  { id:2,  tool_alias:'slack',     tool_name:'Slack',                 tool_logo_url:'https://cdn.simpleicons.org/slack/4A154B',     status:'active',  plan:'Pro',          seats:50, used_seats:46, monthly_amount:38000,  billing_cycle:'monthly', start_date:'2023-01-01', renewal_date:'2025-12-31', owner:'鈴木 花子', department:'全社',             notes:null, category:'communication', created_at:'2023-01-01T00:00:00Z', updated_at:'2024-01-01T00:00:00Z' },
+  { id:3,  tool_alias:'datadog',   tool_name:'Datadog',               tool_logo_url:'https://cdn.simpleicons.org/datadog/632CA6',   status:'active',  plan:'Pro',          seats:10, used_seats:8,  monthly_amount:62000,  billing_cycle:'monthly', start_date:'2024-01-01', renewal_date:'2025-12-31', owner:'佐藤 次郎', department:'SRE',              notes:null, category:'dev_tool',      created_at:'2024-01-01T00:00:00Z', updated_at:'2024-01-01T00:00:00Z' },
+  { id:4,  tool_alias:'figma',     tool_name:'Figma',                 tool_logo_url:'https://cdn.simpleicons.org/figma/F24E1E',     status:'active',  plan:'Organization', seats:15, used_seats:11, monthly_amount:28000,  billing_cycle:'monthly', start_date:'2023-07-01', renewal_date:'2025-06-30', owner:'高橋 美咲', department:'デザイン',         notes:null, category:'dev_tool',      created_at:'2023-07-01T00:00:00Z', updated_at:'2024-01-01T00:00:00Z' },
+  { id:5,  tool_alias:'notion',    tool_name:'Notion',                tool_logo_url:'https://cdn.simpleicons.org/notion/000000',    status:'active',  plan:'Business',     seats:40, used_seats:26, monthly_amount:32000,  billing_cycle:'monthly', start_date:'2022-10-01', renewal_date:'2025-09-30', owner:'伊藤 健司', department:'全社',             notes:null, category:'productivity',  created_at:'2022-10-01T00:00:00Z', updated_at:'2024-01-01T00:00:00Z' },
+  { id:6,  tool_alias:'zoom',      tool_name:'Zoom',                  tool_logo_url:'https://cdn.simpleicons.org/zoom/2D8CFF',      status:'active',  plan:'Business',     seats:50, used_seats:28, monthly_amount:18000,  billing_cycle:'monthly', start_date:'2022-04-01', renewal_date:'2025-03-31', owner:'渡辺 明',   department:'全社',             notes:null, category:'communication', created_at:'2022-04-01T00:00:00Z', updated_at:'2024-01-01T00:00:00Z' },
+  { id:7,  tool_alias:'aws',       tool_name:'AWS',                   tool_logo_url:'https://cdn.simpleicons.org/amazonaws/FF9900', status:'active',  plan:'PayAsYouGo',   seats:0,  used_seats:0,  monthly_amount:280000, billing_cycle:'monthly', start_date:'2020-01-01', renewal_date:null,          owner:'小林 隆',   department:'インフラ',         notes:null, category:'other',         created_at:'2020-01-01T00:00:00Z', updated_at:'2024-01-01T00:00:00Z' },
+  { id:8,  tool_alias:'cursor',    tool_name:'Cursor',                tool_logo_url:'https://cdn.simpleicons.org/cursor/000000',    status:'pending', plan:'Pro',          seats:30, used_seats:0,  monthly_amount:60000,  billing_cycle:'monthly', start_date:'2025-04-01', renewal_date:'2026-03-31', owner:'田中 一郎', department:'エンジニアリング', notes:null, category:'ai_tool',       created_at:'2025-01-01T00:00:00Z', updated_at:'2025-01-01T00:00:00Z' },
+  { id:9,  tool_alias:'copilot',   tool_name:'GitHub Copilot',        tool_logo_url:'https://cdn.simpleicons.org/github/181717',    status:'active',  plan:'Business',     seats:40, used_seats:28, monthly_amount:160000, billing_cycle:'monthly', start_date:'2024-04-01', renewal_date:'2025-03-31', owner:'田中 一郎', department:'エンジニアリング', notes:null, category:'ai_tool',       created_at:'2024-04-01T00:00:00Z', updated_at:'2024-04-01T00:00:00Z' },
+  { id:10, tool_alias:'claude',    tool_name:'Claude API (Anthropic)',tool_logo_url:'https://cdn.simpleicons.org/anthropic/D97757', status:'active',  plan:'API従量課金',  seats:0,  used_seats:0,  monthly_amount:185000, billing_cycle:'monthly', start_date:'2024-06-01', renewal_date:'2025-05-31', owner:'山田 竜也', department:'エンジニアリング', notes:null, category:'ai_tool',       created_at:'2024-06-01T00:00:00Z', updated_at:'2024-06-01T00:00:00Z' },
+  { id:11, tool_alias:'chatgpt',   tool_name:'ChatGPT Team',          tool_logo_url:'https://cdn.simpleicons.org/openai/412991',    status:'active',  plan:'Team',         seats:15, used_seats:9,  monthly_amount:75000,  billing_cycle:'monthly', start_date:'2024-03-01', renewal_date:'2025-02-28', owner:'中村 奈々', department:'プロダクト',       notes:null, category:'ai_tool',       created_at:'2024-03-01T00:00:00Z', updated_at:'2024-03-01T00:00:00Z' },
+]
+
+const MOCK_PROCUREMENT: ApiProcurementRequest[] = [
+  { id:1, tool_alias:'cursor',      tool_name:'Cursor',         tool_logo_url:'https://cdn.simpleicons.org/cursor/000000',  requester_name:'田中 一郎', requester_email:'tanaka@example.com',    status:'reviewing',  reason:'GitHub Copilot と比較してコード補完の精度が高く、エンジニア30名の生産性向上が見込まれます。', expected_seats:30, monthly_budget:60000, priority:'high',   approver_name:null,        approver_comment:null,                                              approved_at:null,          created_at:'2025-01-15T00:00:00Z', updated_at:'2025-01-15T00:00:00Z' },
+  { id:2, tool_alias:null,          tool_name:'Perplexity Pro', tool_logo_url:'',                                           requester_name:'中村 奈々', requester_email:'nakamura@example.com',  status:'approved',   reason:'リサーチ業務の効率化。競合調査・技術調査の時間を50%削減できる見込みです。',                    expected_seats:5,  monthly_budget:15000, priority:'medium', approver_name:'山本 部長', approver_comment:'試験導入として承認。3ヶ月後に効果測定を実施してください。', approved_at:'2026-03-08T00:00:00Z', created_at:'2025-02-01T00:00:00Z', updated_at:'2026-03-08T00:00:00Z' },
+  { id:3, tool_alias:null,          tool_name:'Dify',           tool_logo_url:'',                                           requester_name:'山田 竜也', requester_email:'yamada@example.com',    status:'reviewing',  reason:'LLM アプリ開発基盤として。プロンプト管理を一元化したい。',                                      expected_seats:10, monthly_budget:45000, priority:'high',   approver_name:null,        approver_comment:null,                                              approved_at:null,          created_at:'2025-02-20T00:00:00Z', updated_at:'2025-02-20T00:00:00Z' },
+  { id:4, tool_alias:'linear',      tool_name:'Linear',         tool_logo_url:'https://cdn.simpleicons.org/linear/5E6AD2',  requester_name:'田中 一郎', requester_email:'tanaka@example.com',    status:'contracted', reason:'Jira から移行。エンジニアチームの Issue 管理・スプリント計画の改善。',                           expected_seats:25, monthly_budget:35000, priority:'medium', approver_name:'山本 部長', approver_comment:'承認。来月から移行プロジェクト開始。',                    approved_at:'2026-02-11T00:00:00Z', created_at:'2025-01-05T00:00:00Z', updated_at:'2026-02-11T00:00:00Z' },
+  { id:5, tool_alias:'figma',       tool_name:'Figma Dev Mode', tool_logo_url:'https://cdn.simpleicons.org/figma/F24E1E',  requester_name:'高橋 美咲', requester_email:'takahashi@example.com', status:'rejected',   reason:'デザイン・エンジニア間のハンドオフ効率化のために Dev Mode アドオンが必要。',                      expected_seats:15, monthly_budget:20000, priority:'low',   approver_name:'山本 部長', approver_comment:'既存契約に含まれているため却下。IT部門に確認を。',         approved_at:null,          created_at:'2024-12-10T00:00:00Z', updated_at:'2024-12-15T00:00:00Z' },
+]
+
+function mockContractStats(): ContractStats {
+  const active    = MOCK_CONTRACTS.filter(c => c.status === 'active').length
+  const trial     = MOCK_CONTRACTS.filter(c => c.status === 'trial').length
+  const pending   = MOCK_CONTRACTS.filter(c => c.status === 'pending').length
+  const expired   = MOCK_CONTRACTS.filter(c => c.status === 'expired').length
+  const cancelled = MOCK_CONTRACTS.filter(c => c.status === 'cancelled').length
+  const total     = MOCK_CONTRACTS.filter(c => c.status === 'active' || c.status === 'trial')
+    .reduce((s, c) => s + c.monthly_amount, 0)
+  const aiTools   = MOCK_CONTRACTS.filter(c => c.category === 'ai_tool' && c.status === 'active')
+  const renewalAlerts = MOCK_CONTRACTS.filter(c => {
+    if (!c.renewal_date) return false
+    const diff = (new Date(c.renewal_date).getTime() - Date.now()) / 86400000
+    return diff >= 0 && diff <= 60
+  })
+  return {
+    statusCounts: { active, trial, pending, expired, cancelled },
+    totalMonthlySpend: total,
+    renewalAlerts,
+    aiToolsStats: {
+      count: aiTools.length,
+      monthlySpend: aiTools.reduce((s, c) => s + c.monthly_amount, 0),
+      unusedCost: aiTools.reduce((s, c) => s + (c.monthly_amount * Math.max(0, c.seats - c.used_seats) / Math.max(c.seats, 1)), 0),
+    },
+  }
+}
+
+async function requestWithFallback<T>(path: string, fallback: T, init?: RequestInit): Promise<T> {
+  try {
+    return await request<T>(path, init)
+  } catch {
+    console.info(`[api] バックエンド未起動 → モックデータを使用: ${path}`)
+    return fallback
+  }
 }
 
 // ──────────────────────────────────────────────
@@ -153,11 +214,19 @@ export const getContracts = (params?: { status?: string; q?: string }) => {
   if (params?.status) qs.set('status', params.status)
   if (params?.q) qs.set('q', params.q)
   const query = qs.toString() ? `?${qs}` : ''
-  return request<{ contracts: ApiContract[] }>(`/api/contracts${query}`)
+  const filtered = MOCK_CONTRACTS.filter(c => {
+    if (params?.status && params.status !== 'all' && c.status !== params.status) return false
+    if (params?.q && !c.tool_name.toLowerCase().includes(params.q.toLowerCase())) return false
+    return true
+  })
+  return requestWithFallback<{ contracts: ApiContract[] }>(
+    `/api/contracts${query}`,
+    { contracts: filtered },
+  )
 }
 
 export const getContractStats = () =>
-  request<ContractStats>('/api/contracts/stats')
+  requestWithFallback<ContractStats>('/api/contracts/stats', mockContractStats())
 
 export const createContract = (data: Partial<ApiContract>) =>
   request<{ contract: ApiContract }>('/api/contracts', {
@@ -215,12 +284,24 @@ export const getProcurementRequests = (params?: { status?: string }) => {
   const qs = new URLSearchParams()
   if (params?.status) qs.set('status', params.status)
   const query = qs.toString() ? `?${qs}` : ''
-  return request<{ requests: ApiProcurementRequest[] }>(`/api/procurement${query}`)
+  const filtered = MOCK_PROCUREMENT.filter(r =>
+    !params?.status || params.status === 'all' || r.status === params.status
+  )
+  return requestWithFallback<{ requests: ApiProcurementRequest[] }>(
+    `/api/procurement${query}`,
+    { requests: filtered },
+  )
 }
 
 export const getProcurementStats = () =>
-  request<{ reviewing: number; approved: number; rejected: number; total: number }>(
-    '/api/procurement/stats'
+  requestWithFallback<{ reviewing: number; approved: number; rejected: number; total: number }>(
+    '/api/procurement/stats',
+    {
+      reviewing: MOCK_PROCUREMENT.filter(r => r.status === 'reviewing').length,
+      approved:  MOCK_PROCUREMENT.filter(r => r.status === 'approved').length,
+      rejected:  MOCK_PROCUREMENT.filter(r => r.status === 'rejected').length,
+      total:     MOCK_PROCUREMENT.length,
+    },
   )
 
 export const createProcurementRequest = (data: Partial<ApiProcurementRequest>) =>

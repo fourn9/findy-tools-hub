@@ -1,8 +1,6 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { AuthProvider } from './lib/auth'
-import { RequireAuth } from './components/RequireAuth'
 import { Layout } from './components/Layout'
-import { Login } from './pages/Login'
 import { Dashboard } from './pages/Dashboard'
 import { Catalog } from './pages/Catalog'
 import { ToolDetail } from './pages/ToolDetail'
@@ -17,29 +15,19 @@ function App() {
   return (
     <BrowserRouter basename={import.meta.env.BASE_URL}>
       <AuthProvider>
+      <Layout>
         <Routes>
-          {/* ─── パブリック ─── */}
-          <Route path="/login" element={<Login />} />
-
-          {/* ─── 認証必須 ─── */}
-          <Route path="/*" element={
-            <RequireAuth>
-              <Layout>
-                <Routes>
-                  <Route path="/" element={<Dashboard />} />
-                  <Route path="/ai-cost" element={<AiCostOptimization />} />
-                  <Route path="/contracts" element={<Contracts />} />
-                  <Route path="/procurement" element={<Procurement />} />
-                  <Route path="/spend" element={<SpendAnalysis />} />
-                  <Route path="/accounts" element={<Accounts />} />
-                  <Route path="/catalog" element={<Catalog />} />
-                  <Route path="/catalog/:id" element={<ToolDetail />} />
-                  <Route path="/settings" element={<Settings />} />
-                </Routes>
-              </Layout>
-            </RequireAuth>
-          } />
+          <Route path="/" element={<Dashboard />} />
+          <Route path="/ai-cost" element={<AiCostOptimization />} />
+          <Route path="/contracts" element={<Contracts />} />
+          <Route path="/procurement" element={<Procurement />} />
+          <Route path="/spend" element={<SpendAnalysis />} />
+          <Route path="/accounts" element={<Accounts />} />
+          <Route path="/catalog" element={<Catalog />} />
+          <Route path="/catalog/:id" element={<ToolDetail />} />
+          <Route path="/settings" element={<Settings />} />
         </Routes>
+      </Layout>
       </AuthProvider>
     </BrowserRouter>
   )
