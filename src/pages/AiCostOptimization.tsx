@@ -141,22 +141,25 @@ function OverviewTab() {
   const [openIds, setOpenIds]         = useState<Set<string>>(new Set())
   const [agentTarget, setAgentTarget] = useState<OptimizeTarget | null>(null)
 
+  // ── 全フックを早期 return より前に宣言（Rules of Hooks 準拠）──────
+  const aiContracts = useMemo(
+    () => contracts.filter((c) => c.category === 'ai_tool'),
+    [contracts],
+  )
+  const totalRoiSaving = useMemo(() => aiContracts.reduce((sum, c) => {
+    const gain      = EFFICIENCY_GAINS[c.toolName.toLowerCase()] ?? 0
+    const engineers = c.engineerCount ?? c.seats
+    return sum + engineers * ENGINEER_MONTHLY_COST * gain
+  }, 0), [aiContracts])
+
   if (loading) return <Spinner />
 
-  const aiContracts     = contracts.filter((c) => c.category === 'ai_tool')
   const totalAiMonthly  = aiContracts.reduce((s, c) => s + c.monthlyAmount, 0)
   const totalMonthly    = contracts.reduce((s, c) => s + c.monthlyAmount, 0)
   const aiRatio         = totalMonthly > 0 ? Math.round((totalAiMonthly / totalMonthly) * 100) : 0
   const perEngineerCost = Math.round(totalAiMonthly / TOTAL_ENGINEERS)
 
   const getGain = (toolName: string) => EFFICIENCY_GAINS[toolName.toLowerCase()] ?? 0
-
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const totalRoiSaving = useMemo(() => aiContracts.reduce((sum, c) => {
-    const gain      = getGain(c.toolName)
-    const engineers = c.engineerCount ?? c.seats
-    return sum + engineers * ENGINEER_MONTHLY_COST * gain
-  }, 0), [aiContracts])
 
   const roiMultiple = totalAiMonthly > 0 ? Math.round((totalRoiSaving / totalAiMonthly) * 10) / 10 : 0
 
