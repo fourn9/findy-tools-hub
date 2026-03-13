@@ -6,6 +6,7 @@ import { syncRouter, triggerSync } from './routes/sync'
 import { contractsRouter } from './routes/contracts'
 import { procurementRouter } from './routes/procurement'
 import { negotiateRouter } from './routes/negotiate'
+import { aiUsageRouter } from './routes/aiUsage'
 import { sql, initDb } from './db'
 
 const app = new Hono()
@@ -53,6 +54,7 @@ app.route('/api/sync', syncRouter)
 app.route('/api/contracts', contractsRouter)
 app.route('/api/procurement', procurementRouter)
 app.route('/api/negotiate', negotiateRouter)
+app.route('/api/ai-usage', aiUsageRouter)
 
 // ────────────────────────────────────────
 // DB 初期化 & 起動時自動同期

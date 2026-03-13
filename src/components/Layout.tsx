@@ -15,7 +15,9 @@ import {
   Menu,
   X,
   Brain,
+  LogOut,
 } from 'lucide-react'
+import { useAuth } from '../lib/auth'
 
 const navItems: { path: string; label: string; icon: React.ElementType; highlight?: boolean }[] = [
   { path: '/', label: 'ダッシュボード', icon: LayoutDashboard },
@@ -30,6 +32,9 @@ const navItems: { path: string; label: string; icon: React.ElementType; highligh
 export function Layout({ children }: { children: React.ReactNode }) {
   const location = useLocation()
   const [mobileOpen, setMobileOpen] = useState(false)
+  const { user, signOut } = useAuth()
+
+  const initials = user?.email?.slice(0, 1).toUpperCase() ?? '?'
 
   return (
     <div className="flex h-screen bg-gray-50 overflow-hidden">
@@ -80,23 +85,33 @@ export function Layout({ children }: { children: React.ReactNode }) {
         </nav>
 
         {/* Bottom */}
-        <div className="border-t border-gray-200 p-3">
+        <div className="border-t border-gray-200 p-3 space-y-1">
           <Link
             to="/settings"
-            className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-gray-600 hover:bg-gray-100 hover:text-gray-900 transition-colors"
+            onClick={() => setMobileOpen(false)}
+            className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
+              location.pathname === '/settings'
+                ? 'bg-indigo-50 text-indigo-700 font-medium'
+                : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+            }`}
           >
             <Settings className="w-4 h-4 text-gray-400" />
             設定
           </Link>
-          <div className="flex items-center gap-3 px-3 py-2 mt-1">
-            <div className="w-7 h-7 bg-indigo-600 rounded-full flex items-center justify-center text-white text-xs font-bold">
-              山
+          <div className="flex items-center gap-3 px-3 py-2">
+            <div className="w-7 h-7 bg-indigo-600 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0">
+              {initials}
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-xs font-medium text-gray-900 truncate">山田 太郎</p>
-              <p className="text-xs text-gray-500 truncate">ITマネージャー</p>
+              <p className="text-xs font-medium text-gray-900 truncate">{user?.email ?? ''}</p>
             </div>
-            <ChevronDown className="w-3 h-3 text-gray-400 shrink-0" />
+            <button
+              onClick={signOut}
+              className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+              title="ログアウト"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+            </button>
           </div>
         </div>
       </aside>
