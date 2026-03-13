@@ -25,7 +25,9 @@ import {
   GitBranch,
   Database,
   Settings,
+  Wand2,
 } from 'lucide-react'
+import { OptimizationAgent, type OptimizeTarget } from '../components/OptimizationAgent'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, Legend,
@@ -135,8 +137,9 @@ function MetricCard({
 // ──────────────────────────────────────────────────────────────
 
 function OverviewTab() {
-  const { contracts, loading } = useContracts()
-  const [openIds, setOpenIds] = useState<Set<string>>(new Set())
+  const { contracts, loading, upsert, reload } = useContracts()
+  const [openIds, setOpenIds]         = useState<Set<string>>(new Set())
+  const [agentTarget, setAgentTarget] = useState<OptimizeTarget | null>(null)
 
   if (loading) return <Spinner />
 
@@ -183,7 +186,37 @@ function OverviewTab() {
     )
   }
 
+  // ── AI最適化エージェントの実行コールバック ──
+  async function handleExecute() {
+    if (!agentTarget) return
+    if (agentTarget.type === 'seat_reduction') {
+      const newUsageRate = Math.round(agentTarget.usedSeats * 100 / agentTarget.recommendedSeats)
+      await upsert({
+        id:         agentTarget.contractId,
+        seats:      agentTarget.recommendedSeats,
+        usage_rate: newUsageRate,
+      })
+    } else {
+      await upsert({
+        id:     agentTarget.cancelContractId,
+        status: 'cancelled',
+      })
+    }
+    reload()
+  }
+
   return (
+    <>
+    {/* AI最適化エージェント ドロワー */}
+    {agentTarget && (
+      <OptimizationAgent
+        target={agentTarget}
+        onExecute={handleExecute}
+        onClose={() => setAgentTarget(null)}
+        onDone={() => setAgentTarget(null)}
+      />
+    )}
+
     <div className="space-y-6">
       {/* サマリカード */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -336,10 +369,27 @@ function OverviewTab() {
                     <p className="font-semibold text-gray-900">{c.toolName} のシートを {c.seats}→{recommended} 席に削減</p>
                     <p className="text-sm text-gray-600 mt-1">現在利用率 {rate}%（{c.usedSeats}/{c.seats}席）。推奨 {recommended} 席（現利用×1.15バッファ）に縮小を推奨。</p>
                   </div>
-                  <div className="text-right shrink-0">
-                    <p className="text-lg font-bold text-green-600">-¥{waste.toLocaleString()}</p>
-                    <p className="text-xs text-gray-400">/月</p>
-                    <p className="text-xs text-green-700 font-medium">年間 -¥{Math.round(waste * 12 / 10000)}万</p>
+                  <div className="flex flex-col items-end gap-2 shrink-0">
+                    <div className="text-right">
+                      <p className="text-lg font-bold text-green-600">-¥{waste.toLocaleString()}</p>
+                      <p className="text-xs text-gray-400">/月</p>
+                      <p className="text-xs text-green-700 font-medium">年間 -¥{Math.round(waste * 12 / 10000)}万</p>
+                    </div>
+                    <button
+                      onClick={() => setAgentTarget({
+                        type:             'seat_reduction',
+                        contractId:       c.id,
+                        toolName:         c.toolName,
+                        currentSeats:     c.seats,
+                        recommendedSeats: recommended,
+                        usedSeats:        c.usedSeats,
+                        waste,
+                      })}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-violet-600 hover:bg-violet-700 text-white text-xs font-semibold rounded-lg transition-colors whitespace-nowrap"
+                    >
+                      <Wand2 className="w-3.5 h-3.5" />
+                      AIで最適化
+                    </button>
                   </div>
                 </div>
               </div>
@@ -363,10 +413,26 @@ function OverviewTab() {
                       {cheaperTool.toolName}（¥{cheaperTool.monthlyAmount.toLocaleString()}/月）と同機能カテゴリ。用途を統一して解約可能。
                     </p>
                   </div>
-                  <div className="text-right shrink-0">
-                    <p className="text-lg font-bold text-green-600">-¥{expensiveTool.monthlyAmount.toLocaleString()}</p>
-                    <p className="text-xs text-gray-400">/月（最大）</p>
-                    <p className="text-xs text-green-700 font-medium">年間 -¥{Math.round(expensiveTool.monthlyAmount * 12 / 10000)}万</p>
+                  <div className="flex flex-col items-end gap-2 shrink-0">
+                    <div className="text-right">
+                      <p className="text-lg font-bold text-green-600">-¥{expensiveTool.monthlyAmount.toLocaleString()}</p>
+                      <p className="text-xs text-gray-400">/月（最大）</p>
+                      <p className="text-xs text-green-700 font-medium">年間 -¥{Math.round(expensiveTool.monthlyAmount * 12 / 10000)}万</p>
+                    </div>
+                    <button
+                      onClick={() => setAgentTarget({
+                        type:               'overlap_consolidation',
+                        keepContractId:     cheaperTool.id,
+                        cancelContractId:   expensiveTool.id,
+                        keepToolName:       cheaperTool.toolName,
+                        cancelToolName:     expensiveTool.toolName,
+                        cancelToolMonthly:  expensiveTool.monthlyAmount,
+                      })}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-violet-600 hover:bg-violet-700 text-white text-xs font-semibold rounded-lg transition-colors whitespace-nowrap"
+                    >
+                      <Wand2 className="w-3.5 h-3.5" />
+                      AIで最適化
+                    </button>
                   </div>
                 </div>
               </div>
@@ -381,6 +447,7 @@ function OverviewTab() {
         </div>
       </div>
     </div>
+    </>
   )
 }
 

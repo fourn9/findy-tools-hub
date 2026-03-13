@@ -7,6 +7,7 @@ import { contractsRouter } from './routes/contracts'
 import { procurementRouter } from './routes/procurement'
 import { negotiateRouter } from './routes/negotiate'
 import { aiUsageRouter } from './routes/aiUsage'
+import { optimizeRouter } from './routes/optimize'
 import { sql, initDb, seedDb } from './db'
 
 const app = new Hono()
@@ -55,6 +56,7 @@ app.route('/api/contracts', contractsRouter)
 app.route('/api/procurement', procurementRouter)
 app.route('/api/negotiate', negotiateRouter)
 app.route('/api/ai-usage', aiUsageRouter)
+app.route('/api/optimize', optimizeRouter)
 
 // ────────────────────────────────────────
 // DB 初期化 & 起動時自動同期
