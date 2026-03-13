@@ -114,6 +114,7 @@ export function useContracts() {
             updated.usedSeats = Math.round(baseSets * c.usage_rate / 100)
           }
           if (c.status != null) updated.status = c.status as Contract['status']
+          if (c.plan   != null) updated.plan   = c.plan
           return updated
         }),
       )

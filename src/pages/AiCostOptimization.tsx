@@ -27,7 +27,7 @@ import {
   Settings,
   Wand2,
 } from 'lucide-react'
-import { OptimizationAgent, type OptimizeTarget } from '../components/OptimizationAgent'
+import { OptimizationAgent, type OptimizeTarget, type FrontendAction } from '../components/OptimizationAgent'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, Legend,
@@ -190,22 +190,31 @@ function OverviewTab() {
   }
 
   // ── AI最適化エージェントの実行コールバック ──
-  async function handleExecute() {
+  // エージェントが返した FrontendAction[] を受け取り Supabase / ローカル状態に反映する
+  async function handleExecute(actions: FrontendAction[]) {
     if (!agentTarget) return
-    if (agentTarget.type === 'seat_reduction') {
-      const newUsageRate = Math.round(agentTarget.usedSeats * 100 / agentTarget.recommendedSeats)
-      await upsert({
-        id:         agentTarget.contractId,
-        seats:      agentTarget.recommendedSeats,
-        usage_rate: newUsageRate,
-      })
+
+    if (actions.length === 0) {
+      // エージェントから actions が返らなかった場合は target から直接導出（フォールバック）
+      if (agentTarget.type === 'seat_reduction') {
+        const newUsageRate = Math.round(agentTarget.usedSeats * 100 / agentTarget.recommendedSeats)
+        await upsert({ id: agentTarget.contractId, seats: agentTarget.recommendedSeats, usage_rate: newUsageRate })
+      } else {
+        await upsert({ id: agentTarget.cancelContractId, status: 'cancelled' })
+      }
     } else {
-      await upsert({
-        id:     agentTarget.cancelContractId,
-        status: 'cancelled',
-      })
+      for (const action of actions) {
+        if (action.type === 'update_seats') {
+          await upsert({ id: action.contractId, seats: action.seats, usage_rate: action.usageRate })
+        } else if (action.type === 'cancel') {
+          await upsert({ id: action.contractId, status: 'cancelled' })
+        } else if (action.type === 'update_plan') {
+          await upsert({ id: action.contractId, plan: action.plan })
+        }
+      }
     }
     reload()
+    setAgentTarget(null)
   }
 
   return (
@@ -216,7 +225,6 @@ function OverviewTab() {
         target={agentTarget}
         onExecute={handleExecute}
         onClose={() => setAgentTarget(null)}
-        onDone={() => setAgentTarget(null)}
       />
     )}
 

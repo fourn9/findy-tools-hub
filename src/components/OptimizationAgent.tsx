@@ -7,11 +7,10 @@ import {
   CheckCircle,
   AlertCircle,
   RefreshCw,
-  Sparkles,
 } from 'lucide-react'
 
 // ──────────────────────────────────────────────────────────────
-// 型定義
+// 型定義（エクスポート）
 // ──────────────────────────────────────────────────────────────
 
 export type OptimizeTarget =
@@ -33,55 +32,39 @@ export type OptimizeTarget =
       cancelToolMonthly: number
     }
 
-interface OptimizationAgentProps {
-  target: OptimizeTarget
-  onExecute: () => Promise<void>
-  onClose: () => void
-  onDone?: () => void
+export type FrontendAction =
+  | { type: 'update_seats'; contractId: string; seats: number; usageRate: number }
+  | { type: 'cancel';       contractId: string }
+  | { type: 'update_plan';  contractId: string; plan: string }
+
+interface AgentStep {
+  label:  string
+  status: 'running' | 'done'
 }
 
-type Phase = 'idle' | 'planning' | 'ready' | 'executing' | 'done' | 'error'
+interface OptimizationAgentProps {
+  target:    OptimizeTarget
+  onExecute: (actions: FrontendAction[]) => Promise<void>
+  onClose:   () => void
+}
+
+type Phase = 'idle' | 'running' | 'done' | 'error'
 
 // ──────────────────────────────────────────────────────────────
-// 実行ステップ定義
-// ──────────────────────────────────────────────────────────────
-const STEPS_SEAT = [
-  '最適化プランを確認中...',
-  '対象契約の情報を取得中...',
-  `シート数を更新中...`,
-  '月次コストを再計算中...',
-  '変更を保存しました ✓',
-]
-
-const STEPS_OVERLAP = [
-  '最適化プランを確認中...',
-  '重複ツールの使用状況を確認中...',
-  '解約対象ツールのステータスを更新中...',
-  '月次コストを再計算中...',
-  '変更を保存しました ✓',
-]
-
-// ──────────────────────────────────────────────────────────────
-// API ベース URL（negotiate と同じ方式）
+// API ベース URL
 // ──────────────────────────────────────────────────────────────
 const BASE = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') ?? ''
 
 // ──────────────────────────────────────────────────────────────
 // コンポーネント
 // ──────────────────────────────────────────────────────────────
-export function OptimizationAgent({
-  target,
-  onExecute,
-  onClose,
-  onDone,
-}: OptimizationAgentProps) {
-  const [phase, setPhase]           = useState<Phase>('idle')
-  const [planText, setPlanText]     = useState('')
-  const [currentStep, setCurrentStep] = useState(-1)
-  const [errorMsg, setErrorMsg]     = useState('')
-  const planRef                     = useRef<HTMLDivElement>(null)
+export function OptimizationAgent({ target, onExecute, onClose }: OptimizationAgentProps) {
+  const [phase,     setPhase]     = useState<Phase>('idle')
+  const [steps,     setSteps]     = useState<AgentStep[]>([])
+  const [agentText, setAgentText] = useState('')
+  const [errorMsg,  setErrorMsg]  = useState('')
+  const stepsEndRef               = useRef<HTMLDivElement>(null)
 
-  const steps   = target.type === 'seat_reduction' ? STEPS_SEAT : STEPS_OVERLAP
   const savings = target.type === 'seat_reduction'
     ? target.waste
     : target.cancelToolMonthly
@@ -90,16 +73,18 @@ export function OptimizationAgent({
     ? `${target.toolName} のシートを削減`
     : `${target.cancelToolName} の解約`
 
-  // ── SSE でプランを生成 ──────────────────
-  async function generatePlan() {
-    setPhase('planning')
-    setPlanText('')
+  // ── エージェント実行 ─────────────────────
+  async function runAgent() {
+    setPhase('running')
+    setSteps([])
+    setAgentText('')
     setErrorMsg('')
 
-    const planBody =
+    const runBody =
       target.type === 'seat_reduction'
         ? {
             type:             'seat_reduction',
+            contractId:       target.contractId,
             toolName:         target.toolName,
             currentSeats:     target.currentSeats,
             recommendedSeats: target.recommendedSeats,
@@ -107,24 +92,26 @@ export function OptimizationAgent({
             waste:            target.waste,
           }
         : {
-            type:               'overlap_consolidation',
-            keepToolName:       target.keepToolName,
-            cancelToolName:     target.cancelToolName,
-            cancelToolMonthly:  target.cancelToolMonthly,
+            type:              'overlap_consolidation',
+            cancelContractId:  target.cancelContractId,
+            keepContractId:    target.keepContractId,
+            keepToolName:      target.keepToolName,
+            cancelToolName:    target.cancelToolName,
+            cancelToolMonthly: target.cancelToolMonthly,
           }
 
     try {
-      const res = await fetch(`${BASE}/api/optimize/plan`, {
+      const res = await fetch(`${BASE}/api/optimize/run`, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify(planBody),
+        body:    JSON.stringify(runBody),
       })
-
       if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`)
 
       const reader  = res.body!.getReader()
       const decoder = new TextDecoder()
       let buffer    = ''
+      let frontendActions: FrontendAction[] = []
 
       while (true) {
         const { done, value } = await reader.read()
@@ -137,58 +124,72 @@ export function OptimizationAgent({
         for (const line of lines) {
           if (!line.startsWith('data: ')) continue
           const payload = line.slice(6)
+
           if (payload === '[DONE]') {
-            setPhase('ready')
+            await onExecute(frontendActions)
+            setPhase('done')
             return
           }
+
           try {
-            const parsed = JSON.parse(payload) as { text?: string; error?: string }
-            if (parsed.error) throw new Error(parsed.error)
-            if (parsed.text) {
-              setPlanText((prev) => {
-                const next = prev + parsed.text
-                setTimeout(() => {
-                  planRef.current?.scrollTo({ top: planRef.current.scrollHeight, behavior: 'smooth' })
-                }, 10)
+            const parsed = JSON.parse(payload) as {
+              event?:          string
+              label?:          string
+              text?:           string
+              message?:        string
+              simulated?:      boolean
+              frontendActions?: FrontendAction[]
+            }
+
+            if (parsed.event === 'step_start') {
+              setSteps((prev) => [...prev, { label: parsed.label ?? '', status: 'running' }])
+              setTimeout(() => stepsEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 50)
+
+            } else if (parsed.event === 'step_done') {
+              setSteps((prev) => {
+                const next = [...prev]
+                // 最後の running ステップを done に更新
+                for (let i = next.length - 1; i >= 0; i--) {
+                  if (next[i].status === 'running') {
+                    next[i] = { label: parsed.label ?? next[i].label, status: 'done' }
+                    break
+                  }
+                }
                 return next
               })
+
+            } else if (parsed.event === 'agent_text') {
+              setAgentText((prev) => prev + (parsed.text ?? ''))
+
+            } else if (parsed.event === 'done') {
+              frontendActions = parsed.frontendActions ?? []
+
+            } else if (parsed.event === 'error') {
+              throw new Error(parsed.message ?? 'エージェントエラーが発生しました')
             }
           } catch (e) {
-            if ((e as Error).message !== 'SyntaxError') {
-              throw e
-            }
+            // エージェントエラーは上に伝播
+            const msg = (e as Error).message
+            if (msg.includes('エージェントエラー') || msg.includes('HTTP ')) throw e
+            // JSON パースエラーは無視
           }
         }
       }
-      setPhase('ready')
+      // [DONE] を受け取れなかった場合も完了扱い
+      await onExecute(frontendActions)
+      setPhase('done')
+
     } catch (err) {
       setErrorMsg(String(err))
       setPhase('error')
     }
   }
 
-  // ── 実行（ステップアニメーション + DB 更新）──
-  async function executeOptimization() {
-    setPhase('executing')
-    setCurrentStep(0)
-
-    // ステップ 0〜2 をアニメーション
-    for (let i = 0; i < steps.length - 2; i++) {
-      await new Promise<void>((r) => setTimeout(r, 700))
-      setCurrentStep(i + 1)
-    }
-
-    // 実際の更新
-    try {
-      await onExecute()
-      await new Promise<void>((r) => setTimeout(r, 500))
-      setCurrentStep(steps.length - 1)
-      setPhase('done')
-      onDone?.()
-    } catch (err) {
-      setErrorMsg(String(err))
-      setPhase('error')
-    }
+  function reset() {
+    setPhase('idle')
+    setSteps([])
+    setAgentText('')
+    setErrorMsg('')
   }
 
   return (
@@ -277,65 +278,50 @@ export function OptimizationAgent({
           {phase === 'idle' && (
             <div className="text-center py-10 space-y-3">
               <div className="w-16 h-16 bg-violet-100 rounded-2xl flex items-center justify-center mx-auto">
-                <Sparkles className="w-8 h-8 text-violet-400" />
+                <Bot className="w-8 h-8 text-violet-400" />
               </div>
-              <p className="text-sm font-medium text-gray-700">AIが最適化プランを生成します</p>
+              <p className="text-sm font-medium text-gray-700">AIエージェントが実際の作業を行います</p>
               <p className="text-xs text-gray-400 max-w-xs mx-auto">
-                変更内容・その理由・実行ステップを確認してから、実際に契約データを更新できます
+                契約データの確認・シート変更・解約処理をAIが自律的に実行します
               </p>
             </div>
           )}
 
-          {/* プランテキスト（生成中・完了後） */}
-          {(phase === 'planning' || phase === 'ready' || phase === 'executing' || phase === 'done') && planText && (
+          {/* 実行ステップ */}
+          {(phase === 'running' || phase === 'done') && steps.length > 0 && (
             <div className="space-y-2">
               <div className="flex items-center gap-1.5">
                 <Bot className="w-3.5 h-3.5 text-violet-500" />
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">最適化プラン</p>
-                {phase === 'planning' && (
-                  <Loader2 className="w-3 h-3 animate-spin text-violet-500 ml-1" />
-                )}
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">エージェント実行ログ</p>
+                {phase === 'running' && <Loader2 className="w-3 h-3 animate-spin text-violet-500 ml-1" />}
               </div>
-              <div
-                ref={planRef}
-                className="bg-gray-50 rounded-xl p-4 text-sm text-gray-700 whitespace-pre-wrap leading-relaxed max-h-72 overflow-y-auto border border-gray-200 font-mono"
-              >
-                {planText}
-                {phase === 'planning' && (
-                  <span className="inline-block w-1.5 h-4 bg-violet-500 animate-pulse ml-0.5 -mb-0.5 rounded-sm" />
-                )}
+              <div className="bg-gray-50 rounded-xl border border-gray-200 p-4 space-y-3">
+                {steps.map((step, i) => (
+                  <div key={i} className="flex items-center gap-2.5 text-sm transition-all duration-500">
+                    {step.status === 'done' ? (
+                      <CheckCircle className="w-4 h-4 text-green-500 shrink-0" />
+                    ) : (
+                      <Loader2 className="w-4 h-4 text-violet-500 animate-spin shrink-0" />
+                    )}
+                    <span className={
+                      step.status === 'done'
+                        ? 'text-gray-900 font-medium'
+                        : 'text-violet-700 font-medium'
+                    }>
+                      {step.label}
+                    </span>
+                  </div>
+                ))}
+                <div ref={stepsEndRef} />
               </div>
             </div>
           )}
 
-          {/* 実行ステップ */}
-          {(phase === 'executing' || phase === 'done') && (
-            <div className="space-y-2">
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">実行ステップ</p>
-              <div className="space-y-2.5">
-                {steps.map((step, i) => {
-                  const isCompleted = i < currentStep || (phase === 'done' && i === steps.length - 1)
-                  const isActive    = i === currentStep && phase === 'executing'
-                  const isPending   = i > currentStep
-                  return (
-                    <div
-                      key={i}
-                      className={`flex items-center gap-2.5 text-sm transition-all duration-500 ${isPending ? 'opacity-30' : 'opacity-100'}`}
-                    >
-                      {isCompleted ? (
-                        <CheckCircle className="w-4 h-4 text-green-500 shrink-0" />
-                      ) : isActive ? (
-                        <Loader2 className="w-4 h-4 text-violet-500 animate-spin shrink-0" />
-                      ) : (
-                        <div className="w-4 h-4 rounded-full border-2 border-gray-300 shrink-0" />
-                      )}
-                      <span className={isCompleted || isActive ? 'text-gray-900 font-medium' : 'text-gray-400'}>
-                        {step}
-                      </span>
-                    </div>
-                  )
-                })}
-              </div>
+          {/* エージェントのテキスト出力 */}
+          {agentText && (
+            <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-2">
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">エージェントレポート</p>
+              <p className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{agentText}</p>
             </div>
           )}
 
@@ -371,47 +357,18 @@ export function OptimizationAgent({
         <div className="px-6 py-4 border-t border-gray-200 bg-gray-50 shrink-0 space-y-2">
           {phase === 'idle' && (
             <button
-              onClick={generatePlan}
+              onClick={runAgent}
               className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-violet-600 hover:bg-violet-700 text-white font-semibold text-sm transition-colors"
             >
-              <Sparkles className="w-4 h-4" />
-              AIプランを生成
+              <Play className="w-4 h-4" />
+              エージェントを実行
             </button>
           )}
 
-          {phase === 'planning' && (
+          {phase === 'running' && (
             <button
               disabled
               className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-violet-200 text-violet-400 font-semibold text-sm cursor-not-allowed"
-            >
-              <Loader2 className="w-4 h-4 animate-spin" />
-              プランを生成中...
-            </button>
-          )}
-
-          {phase === 'ready' && (
-            <>
-              <button
-                onClick={executeOptimization}
-                className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-green-600 hover:bg-green-700 text-white font-semibold text-sm transition-colors"
-              >
-                <Play className="w-4 h-4" />
-                最適化を実行する
-              </button>
-              <button
-                onClick={() => { setPhase('idle'); setPlanText('') }}
-                className="w-full flex items-center justify-center gap-2 py-2 px-4 rounded-xl bg-gray-200 hover:bg-gray-300 text-gray-600 font-medium text-sm transition-colors"
-              >
-                <RefreshCw className="w-3.5 h-3.5" />
-                プランを再生成
-              </button>
-            </>
-          )}
-
-          {phase === 'executing' && (
-            <button
-              disabled
-              className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-green-200 text-green-400 font-semibold text-sm cursor-not-allowed"
             >
               <Loader2 className="w-4 h-4 animate-spin" />
               実行中...
@@ -429,11 +386,11 @@ export function OptimizationAgent({
 
           {phase === 'error' && (
             <button
-              onClick={() => { setPhase('idle'); setPlanText(''); setErrorMsg('') }}
+              onClick={reset}
               className="w-full flex items-center justify-center gap-2 py-2 px-4 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-600 font-medium text-sm transition-colors"
             >
               <RefreshCw className="w-3.5 h-3.5" />
-              最初からやり直す
+              やり直す
             </button>
           )}
         </div>
