@@ -46,7 +46,7 @@ jobs:
           VITE_API_URL: ${{ secrets.VITE_API_URL }}
 
       - name: GitHub Pages 設定
-        uses: actions/configure-pages@v5
+        uses: actions/configure-pages@v6
 
       - name: Pages にアップロード
         uses: actions/upload-pages-artifact@v3
